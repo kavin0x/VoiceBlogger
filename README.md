@@ -4,6 +4,8 @@ Turn any voice recording into a polished blog post and Instagram captions — en
 
 **Platform: Apple Silicon (M-series Mac) only.** The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
 
+(Don't worry, other platforms are coming sometime in the future)
+
 ---
 
 ## How it works
