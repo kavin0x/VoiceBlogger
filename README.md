@@ -107,4 +107,4 @@ Any format supported by Whisper: `.m4a`, `.mp3`, `.wav`, `.mp4`, `.ogg`, `.flac`
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE).
