@@ -18,6 +18,7 @@ dist/
 build/
 .venv/
 venv/
+.env
 env/
 
 # macOS
