@@ -1,0 +1,31 @@
+# Audio input files and raw transcripts
+Raw_Data/
+
+# Generated outputs
+blog/
+insta/
+
+# Personal / media files
+*.jpeg
+*.jpg
+*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+
+# Claude
+.claude/
