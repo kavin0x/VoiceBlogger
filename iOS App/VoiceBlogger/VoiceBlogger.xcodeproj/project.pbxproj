@@ -1,0 +1,783 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8A0F702F2FCBB3D70067AEBD /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8AD55693FCBAA01001151C1 /* WhisperKit */; };
+		8A0F70302FCBB3D70067AEBD /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 8AD55694FCBAA01001151C1 /* MLX */; };
+		8A0F70312FCBB3D70067AEBD /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 8AD55695FCBAA01001151C1 /* MLXNN */; };
+		8A0F70322FCBB3D70067AEBD /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 8AD55696FCBAA01001151C1 /* MLXLLM */; };
+		8A0F70332FCBB3D70067AEBD /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 8AD55697FCBAA01001151C1 /* MLXLMCommon */; };
+		8A34A1242FCBB9E90010F5A2 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 8A34A1232FCBB9E90010F5A2 /* HuggingFace */; };
+		8A34A1272FCBBA040010F5A2 /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 8A34A1262FCBBA040010F5A2 /* Hub */; };
+		8A34A1292FCBBA040010F5A2 /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 8A34A1282FCBBA040010F5A2 /* Transformers */; };
+		8AB9EBC62FCBBC3500ABF038 /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBC52FCBBC3500ABF038 /* MLXFFT */; };
+		8AB9EBC82FCBBC3500ABF038 /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBC72FCBBC3500ABF038 /* MLXFast */; };
+		8AB9EBCA2FCBBC3500ABF038 /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBC92FCBBC3500ABF038 /* MLXRandom */; };
+		8AB9EBCF2FCBBCDA00ABF038 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBCE2FCBBCDA00ABF038 /* Tokenizers */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8AD556592FCBAA03001151C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8AD556412FCBAA01001151C1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8AD556482FCBAA01001151C1;
+			remoteInfo = VoiceBlogger;
+		};
+		8AD556632FCBAA03001151C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8AD556412FCBAA01001151C1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8AD556482FCBAA01001151C1;
+			remoteInfo = VoiceBlogger;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		8AD556492FCBAA01001151C1 /* VoiceBlogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceBlogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		8AD5564B2FCBAA01001151C1 /* VoiceBlogger */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoiceBlogger;
+			sourceTree = "<group>";
+		};
+		8AD5565B2FCBAA03001151C1 /* VoiceBloggerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoiceBloggerTests;
+			sourceTree = "<group>";
+		};
+		8AD556652FCBAA03001151C1 /* VoiceBloggerUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = VoiceBloggerUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8AD556462FCBAA01001151C1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8A0F70332FCBB3D70067AEBD /* MLXLMCommon in Frameworks */,
+				8A0F70322FCBB3D70067AEBD /* MLXLLM in Frameworks */,
+				8A34A1292FCBBA040010F5A2 /* Transformers in Frameworks */,
+				8AB9EBCA2FCBBC3500ABF038 /* MLXRandom in Frameworks */,
+				8A0F70312FCBB3D70067AEBD /* MLXNN in Frameworks */,
+				8A0F70302FCBB3D70067AEBD /* MLX in Frameworks */,
+				8AB9EBC62FCBBC3500ABF038 /* MLXFFT in Frameworks */,
+				8A34A1272FCBBA040010F5A2 /* Hub in Frameworks */,
+				8AB9EBCF2FCBBCDA00ABF038 /* Tokenizers in Frameworks */,
+				8A0F702F2FCBB3D70067AEBD /* WhisperKit in Frameworks */,
+				8AB9EBC82FCBBC3500ABF038 /* MLXFast in Frameworks */,
+				8A34A1242FCBB9E90010F5A2 /* HuggingFace in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD556552FCBAA03001151C1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD5565F2FCBAA03001151C1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8AB9EBCD2FCBBCDA00ABF038 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		8AD556402FCBAA01001151C1 = {
+			isa = PBXGroup;
+			children = (
+				8AD5564B2FCBAA01001151C1 /* VoiceBlogger */,
+				8AD5565B2FCBAA03001151C1 /* VoiceBloggerTests */,
+				8AD556652FCBAA03001151C1 /* VoiceBloggerUITests */,
+				8AB9EBCD2FCBBCDA00ABF038 /* Frameworks */,
+				8AD5564A2FCBAA01001151C1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8AD5564A2FCBAA01001151C1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8AD556492FCBAA01001151C1 /* VoiceBlogger.app */,
+				8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */,
+				8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8AD556482FCBAA01001151C1 /* VoiceBlogger */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8AD5566C2FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBlogger" */;
+			buildPhases = (
+				8AD556452FCBAA01001151C1 /* Sources */,
+				8AD556462FCBAA01001151C1 /* Frameworks */,
+				8AD556472FCBAA01001151C1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8AD5564B2FCBAA01001151C1 /* VoiceBlogger */,
+			);
+			name = VoiceBlogger;
+			packageProductDependencies = (
+				8AD55693FCBAA01001151C1 /* WhisperKit */,
+				8AD55694FCBAA01001151C1 /* MLX */,
+				8AD55695FCBAA01001151C1 /* MLXNN */,
+				8AD55696FCBAA01001151C1 /* MLXLLM */,
+				8AD55697FCBAA01001151C1 /* MLXLMCommon */,
+				8A34A1232FCBB9E90010F5A2 /* HuggingFace */,
+				8A34A1262FCBBA040010F5A2 /* Hub */,
+				8A34A1282FCBBA040010F5A2 /* Transformers */,
+				8AB9EBC52FCBBC3500ABF038 /* MLXFFT */,
+				8AB9EBC72FCBBC3500ABF038 /* MLXFast */,
+				8AB9EBC92FCBBC3500ABF038 /* MLXRandom */,
+				8AB9EBCE2FCBBCDA00ABF038 /* Tokenizers */,
+			);
+			productName = VoiceBlogger;
+			productReference = 8AD556492FCBAA01001151C1 /* VoiceBlogger.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8AD556572FCBAA03001151C1 /* VoiceBloggerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8AD5566F2FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBloggerTests" */;
+			buildPhases = (
+				8AD556542FCBAA03001151C1 /* Sources */,
+				8AD556552FCBAA03001151C1 /* Frameworks */,
+				8AD556562FCBAA03001151C1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8AD5565A2FCBAA03001151C1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				8AD5565B2FCBAA03001151C1 /* VoiceBloggerTests */,
+			);
+			name = VoiceBloggerTests;
+			packageProductDependencies = (
+			);
+			productName = VoiceBloggerTests;
+			productReference = 8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8AD556612FCBAA03001151C1 /* VoiceBloggerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8AD556722FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBloggerUITests" */;
+			buildPhases = (
+				8AD5565E2FCBAA03001151C1 /* Sources */,
+				8AD5565F2FCBAA03001151C1 /* Frameworks */,
+				8AD556602FCBAA03001151C1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8AD556642FCBAA03001151C1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				8AD556652FCBAA03001151C1 /* VoiceBloggerUITests */,
+			);
+			name = VoiceBloggerUITests;
+			packageProductDependencies = (
+			);
+			productName = VoiceBloggerUITests;
+			productReference = 8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8AD556412FCBAA01001151C1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					8AD556482FCBAA01001151C1 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					8AD556572FCBAA03001151C1 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 8AD556482FCBAA01001151C1;
+					};
+					8AD556612FCBAA03001151C1 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 8AD556482FCBAA01001151C1;
+					};
+				};
+			};
+			buildConfigurationList = 8AD556442FCBAA01001151C1 /* Build configuration list for PBXProject "VoiceBlogger" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 8AD556402FCBAA01001151C1;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				8A34A11F2FCBB7950010F5A2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+				8A34A1212FCBB7D60010F5A2 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				8A34A1222FCBB9E90010F5A2 /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				8A34A1252FCBBA040010F5A2 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 8AD5564A2FCBAA01001151C1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8AD556482FCBAA01001151C1 /* VoiceBlogger */,
+				8AD556572FCBAA03001151C1 /* VoiceBloggerTests */,
+				8AD556612FCBAA03001151C1 /* VoiceBloggerUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8AD556472FCBAA01001151C1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD556562FCBAA03001151C1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD556602FCBAA03001151C1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8AD556452FCBAA01001151C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD556542FCBAA03001151C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8AD5565E2FCBAA03001151C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		8AD5565A2FCBAA03001151C1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8AD556482FCBAA01001151C1 /* VoiceBlogger */;
+			targetProxy = 8AD556592FCBAA03001151C1 /* PBXContainerItemProxy */;
+		};
+		8AD556642FCBAA03001151C1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8AD556482FCBAA01001151C1 /* VoiceBlogger */;
+			targetProxy = 8AD556632FCBAA03001151C1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		8AD5566A2FCBAA03001151C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		8AD5566B2FCBAA03001151C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8AD5566D2FCBAA03001151C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceBlogger needs the microphone to record your voice for blog post creation.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBlogger;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		8AD5566E2FCBAA03001151C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceBlogger needs the microphone to record your voice for blog post creation.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBlogger;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		8AD556702FCBAA03001151C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceBlogger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoiceBlogger";
+			};
+			name = Debug;
+		};
+		8AD556712FCBAA03001151C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VoiceBlogger.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/VoiceBlogger";
+			};
+			name = Release;
+		};
+		8AD556732FCBAA03001151C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VoiceBlogger;
+			};
+			name = Debug;
+		};
+		8AD556742FCBAA03001151C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QVK58AVGRJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = VoiceBlogger;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8AD556442FCBAA01001151C1 /* Build configuration list for PBXProject "VoiceBlogger" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8AD5566A2FCBAA03001151C1 /* Debug */,
+				8AD5566B2FCBAA03001151C1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8AD5566C2FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBlogger" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8AD5566D2FCBAA03001151C1 /* Debug */,
+				8AD5566E2FCBAA03001151C1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8AD5566F2FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBloggerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8AD556702FCBAA03001151C1 /* Debug */,
+				8AD556712FCBAA03001151C1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8AD556722FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBloggerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8AD556732FCBAA03001151C1 /* Debug */,
+				8AD556742FCBAA03001151C1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		8A34A11F2FCBB7950010F5A2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		8A34A1212FCBB7D60010F5A2 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = exactVersion;
+				version = 3.31.3;
+			};
+		};
+		8A34A1222FCBB9E90010F5A2 /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.0;
+			};
+			traits = (
+			);
+		};
+		8A34A1252FCBBA040010F5A2 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = exactVersion;
+				version = 1.3.3;
+			};
+			traits = (
+			);
+		};
+		8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.31.3;
+			};
+		};
+		8AD55690FCBAA01001151C1 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
+		8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.21.0;
+			};
+		};
+		8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		8A34A1232FCBB9E90010F5A2 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A34A1222FCBB9E90010F5A2 /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		8A34A1262FCBBA040010F5A2 /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A34A1252FCBBA040010F5A2 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		8A34A1282FCBBA040010F5A2 /* Transformers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A34A1252FCBBA040010F5A2 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Transformers;
+		};
+		8AB9EBC52FCBBC3500ABF038 /* MLXFFT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFFT;
+		};
+		8AB9EBC72FCBBC3500ABF038 /* MLXFast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFast;
+		};
+		8AB9EBC92FCBBC3500ABF038 /* MLXRandom */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXRandom;
+		};
+		8AB9EBCE2FCBBCDA00ABF038 /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8A34A1252FCBBA040010F5A2 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		8AD55693FCBAA01001151C1 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AD55690FCBAA01001151C1 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
+		};
+		8AD55694FCBAA01001151C1 /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		8AD55695FCBAA01001151C1 /* MLXNN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXNN;
+		};
+		8AD55696FCBAA01001151C1 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		8AD55697FCBAA01001151C1 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 8AD556412FCBAA01001151C1 /* Project object */;
+}

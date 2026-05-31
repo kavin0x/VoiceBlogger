@@ -1,0 +1,50 @@
+import SwiftUI
+
+struct ContentView: View {
+    @Environment(AppState.self) var appState
+    @Environment(ModelDownloadManager.self) var downloadManager
+
+    var body: some View {
+        Group {
+            if !downloadManager.allModelsReady {
+                ModelDownloadView()
+            } else {
+                stageView
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { appState.showError },
+            set: { appState.showError = $0 }
+        )) {
+            Button("OK") { appState.dismissError() }
+        } message: {
+            Text(appState.errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var stageView: some View {
+        switch appState.stage {
+        case .modelDownload:
+            ModelDownloadView()
+
+        case .recording:
+            RecordingView()
+
+        case .transcribing(let audioURL):
+            TranscriptionView(audioURL: audioURL)
+
+        case .generatingBlog(let transcript, let post):
+            BlogView(post: post, transcript: transcript)
+
+        case .viewingBlog(let post):
+            BlogView(post: post, transcript: post.transcript)
+
+        case .viewingInstagram(let post):
+            InstagramView(post: post)
+
+        case .history:
+            BlogListView()
+        }
+    }
+}
