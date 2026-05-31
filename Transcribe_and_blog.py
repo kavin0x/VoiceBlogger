@@ -36,8 +36,8 @@ INSTA_DIR    = PROJECT_ROOT / "insta"
 # ── Step 1: Transcribe ────────────────────────────────────────────────────────
 
 def transcribe(audio_path: str, language: str, task: str) -> str:
-    result_box = [None]
-    error_box = [None]
+    result_box: list = [None]
+    error_box: list[Exception | None] = [None]
 
     def _run():
         try:

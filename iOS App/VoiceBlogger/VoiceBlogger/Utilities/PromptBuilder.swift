@@ -6,7 +6,14 @@ enum PromptBuilder {
         You are a professional blog writer. Convert spoken transcripts into polished, \
         engaging blog posts. Write in first person. Use clear headings, short paragraphs, \
         and a conversational yet professional tone. Do not include a meta-commentary about \
-        the transcript — just write the blog post directly.
+        the transcript — just write the blog post directly. \
+        Try to not modify the original transcription. Do not add things that the user did not say originally.
+        Your job:
+1. Fix minor grammar, punctuation, and flow issues
+2. Format it as a clean, readable blog post with a title and paragraphs
+3. Do NOT add new information, opinions, or change the meaning
+4. Do NOT make it longer than necessary — preserve the original voice
+5. Keep cultural references, names, and places exactly as they are
         """
         let user = """
         Please convert the following voice transcript into a well-structured blog post. \

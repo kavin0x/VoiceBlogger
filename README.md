@@ -2,7 +2,7 @@
 
 Turn any voice recording into a polished blog post and Instagram captions — entirely offline, using local AI. No API keys, no cloud, no cost per run.
 
-Available on **Apple Silicon (M-series Mac)** and the **iOS app**. The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
+Available on **Apple Silicon (M-series Mac)** and as a native **iOS app**. The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
 
 (Don't worry, other platforms are coming sometime in the future)
 
@@ -15,6 +15,20 @@ Available on **Apple Silicon (M-series Mac)** and the **iOS app**. The transcrip
 3. **Instagram captions** — the same model generates 3–5 ready-to-post captions with hashtags.
 
 All three outputs are saved as files next to your audio.
+
+## iOS app
+
+The iOS app is a SwiftUI companion to the Mac workflow. On first launch it downloads the required on-device models once, then runs fully offline.
+
+What it includes:
+
+- One-tap recording with live waveform feedback
+- Automatic transcription after you stop recording
+- Blog generation and Instagram caption views
+- A history screen for past posts stored locally on device
+- Built-in model download and retry handling
+
+The app lives under [iOS App/VoiceBlogger](iOS%20App/VoiceBlogger).
 
 ---
 
@@ -45,6 +59,10 @@ ollama list
 ```
 
 Ollama must be running before you use this tool (`ollama serve` or the Ollama desktop app).
+
+### iOS app setup
+
+The iOS app manages its own on-device model downloads on first launch, so there is no separate API-key or cloud setup. Once the models are present, the app works offline for recording, transcription, blog generation, and caption creation.
 
 ---
 
@@ -86,6 +104,7 @@ voiceblogger/
 │   └── recording_blog.md
 ├── insta/                  # Instagram captions (auto-created)
 │   └── recording_instagram.md
+├── iOS App/VoiceBlogger/   # native SwiftUI iOS app
 └── Transcribe_and_blog.py
 ```
 
