@@ -2,7 +2,7 @@
 
 Turn any voice recording into a polished blog post and Instagram captions — entirely offline, using local AI. No API keys, no cloud, no cost per run.
 
-**Platform: Apple Silicon (M-series Mac) only.** The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
+Available on **Apple Silicon (M-series Mac)** and the **iOS app**. The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
 
 (Don't worry, other platforms are coming sometime in the future)
 
