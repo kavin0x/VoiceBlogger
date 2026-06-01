@@ -10,7 +10,7 @@ final class LLMService: Sendable {
     init(container: ModelContainer) {
         self.container = container
         // Limit GPU memory cache to reduce pressure on lower-RAM devices
-        MLX.GPU.set(cacheLimit: 20 * 1024 * 1024)
+        MLX.Memory.cacheLimit = 20 * 1024 * 1024
     }
 
     static func make() async throws -> LLMService {
