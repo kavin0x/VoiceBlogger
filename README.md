@@ -1,6 +1,6 @@
 # VoiceBlogger
 
-Turn any voice recording into a polished blog post and Instagram captions — entirely offline, using local AI. No API keys, no cloud, no cost per run.
+Turn any voice recording into a polished blog post and Instagram captions — entirely offline, using local AI. No API keys, no cloud, no cost per run. Just free, private, and local goodness.
 
 Available on **Apple Silicon (M-series Mac)** and as a native **iOS app**. The transcription layer uses [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper), which requires MLX and will not run on Intel Macs, Linux, or Windows.
 
