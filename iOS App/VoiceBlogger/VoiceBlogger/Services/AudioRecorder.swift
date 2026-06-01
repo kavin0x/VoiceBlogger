@@ -36,8 +36,9 @@ final class AudioRecorder: NSObject {
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
         try session.setActive(true)
 
-        let tempURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString + ".m4a")
+        let recordingsDir = URL.recordingsDirectory
+        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+        let tempURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".m4a")
 
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),

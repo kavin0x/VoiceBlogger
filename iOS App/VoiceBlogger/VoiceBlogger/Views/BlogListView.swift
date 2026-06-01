@@ -19,7 +19,11 @@ struct BlogListView: View {
                     List {
                         ForEach(posts) { post in
                             Button {
-                                appState.navigateTo(.viewingBlog(post: post))
+                                if post.transcriptionState == nil || post.transcriptionState == .complete {
+                                    appState.navigateTo(.viewingBlog(post: post))
+                                } else {
+                                    appState.navigateTo(.transcribing(post: post))
+                                }
                             } label: {
                                 BlogPostRowView(post: post)
                             }
@@ -47,6 +51,7 @@ struct BlogListView: View {
         for index in offsets {
             modelContext.delete(posts[index])
         }
+        try? modelContext.save()
     }
 }
 
@@ -63,6 +68,15 @@ private struct BlogPostRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                if post.transcriptionState == .untranscribed {
+                    Label("Untranscribed", systemImage: "waveform.slash")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                } else if post.transcriptionState == .inProgress {
+                    Label("Incomplete", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
                 if !post.blogContent.isEmpty {
                     Label("Blog", systemImage: "doc.text.fill")
                         .font(.caption2)

@@ -1,13 +1,14 @@
 import Foundation
 import Observation
+import CoreML
 import WhisperKit
 import MLXLLM
 import MLXLMCommon
 
 let kLLMModelID = "mlx-community/gemma-4-e2b-it-4bit"
-let kWhisperModelID = "openai_whisper-large-v3-v20240930_626MB"
+let kWhisperModelID = "openai_whisper-medium"
 
-private let kWhisperReadyKey = "whisperModelReady_v1"
+private let kWhisperReadyKey = "whisperModelReady_v4"
 private let kLLMReadyKey = "llmModelReady_v1"
 
 @Observable
@@ -18,6 +19,9 @@ final class ModelDownloadManager {
     var isLLMReady: Bool
     var downloadError: String?
     var isDownloading = false
+
+    // Retained after download so TranscriptionService can reuse it without reloading from disk.
+    @ObservationIgnored var whisperKit: WhisperKit?
 
     var allModelsReady: Bool { isWhisperReady && isLLMReady }
 
@@ -33,22 +37,27 @@ final class ModelDownloadManager {
         isDownloading = true
         downloadError = nil
 
-        await withTaskGroup(of: Void.self) { group in
-            if !isWhisperReady {
-                group.addTask { await self.downloadWhisper() }
-            }
-            if !isLLMReady {
-                group.addTask { await self.downloadLLM() }
-            }
-        }
+        // Sequential — loading both models concurrently peaks at ~1.5 GB and kills the process.
+        if !isWhisperReady { await downloadWhisper() }
+        if downloadError == nil, !isLLMReady { await downloadLLM() }
+
         isDownloading = false
     }
 
     private func downloadWhisper() async {
         do {
             whisperProgress = 0.05
-            // WhisperKit downloads the CoreML model from argmaxinc/whisperkit-coreml on first init
-            let _ = try await WhisperKit(model: kWhisperModelID)
+            // WhisperKit downloads the CoreML model from argmaxinc/whisperkit-coreml on first init.
+            // Use cpuAndGPU to avoid ANE failures on devices with unknown/mismatched ANE hardware.
+            let config = WhisperKitConfig(
+                model: kWhisperModelID,
+                computeOptions: ModelComputeOptions(
+                    audioEncoderCompute:  .cpuAndGPU,
+                    textDecoderCompute: .cpuAndGPU
+                )
+            )
+            let kit = try await WhisperKit(config)
+            whisperKit = kit
             whisperProgress = 1.0
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
@@ -84,5 +93,13 @@ final class ModelDownloadManager {
         isLLMReady = false
         whisperProgress = 0
         llmProgress = 0
+        downloadError = nil
+
+        // Delete cached model files so stale/wrong-ID models don't block re-download
+        let fm = FileManager.default
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let hfDir = docs.appendingPathComponent("huggingface")
+            try? fm.removeItem(at: hfDir)
+        }
     }
 }

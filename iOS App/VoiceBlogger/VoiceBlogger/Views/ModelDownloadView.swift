@@ -23,15 +23,15 @@ struct ModelDownloadView: View {
             VStack(spacing: 20) {
                 DownloadRowView(
                     icon: "waveform",
-                    title: "Whisper (Speech Recognition)",
-                    subtitle: "~626 MB · large-v3 (v20240930)",
+                    title: "Speech Recognition",
+                    subtitle: "~800 MB",
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
                 DownloadRowView(
                     icon: "text.bubble.fill",
-                    title: "Gemma 4 (Blog Generator)",
-                    subtitle: "~700 MB · gemma-4-e2b-it-4bit",
+                    title: "Blog Generator",
+                    subtitle: "~700 MB",
                     progress: downloadManager.llmProgress,
                     isReady: downloadManager.isLLMReady
                 )

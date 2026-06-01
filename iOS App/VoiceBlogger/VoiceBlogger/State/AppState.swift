@@ -4,7 +4,7 @@ import Observation
 enum AppStage: Equatable {
     case modelDownload
     case recording
-    case transcribing(audioURL: URL)
+    case transcribing(post: BlogPost)
     case generatingBlog(transcript: String, post: BlogPost)
     case viewingBlog(post: BlogPost)
     case viewingInstagram(post: BlogPost)
@@ -15,7 +15,7 @@ enum AppStage: Equatable {
         case (.modelDownload, .modelDownload): return true
         case (.recording, .recording): return true
         case (.history, .history): return true
-        case (.transcribing(let a), .transcribing(let b)): return a == b
+        case (.transcribing(let a), .transcribing(let b)): return a.id == b.id
         case (.viewingBlog(let a), .viewingBlog(let b)): return a.id == b.id
         case (.viewingInstagram(let a), .viewingInstagram(let b)): return a.id == b.id
         default: return false

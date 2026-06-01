@@ -11,9 +11,13 @@ struct BlogView: View {
     @State private var isGenerating = false
     @State private var generationError: String?
     @State private var showShareSheet = false
+    @State private var showAudioShareSheet = false
     @State private var didComplete = false
+    @State private var isEditing = false
+    @State private var editableText = ""
 
     var displayText: String { streamedText.isEmpty ? post.blogContent : streamedText }
+    var shareText: String { isEditing ? editableText : displayText }
 
     var body: some View {
         NavigationStack {
@@ -36,9 +40,16 @@ struct BlogView: View {
                     }
 
                     if !displayText.isEmpty {
-                        Text(displayText)
-                            .font(.body)
-                            .textSelection(.enabled)
+                        if isEditing {
+                            TextEditor(text: $editableText)
+                                .font(.body)
+                                .frame(minHeight: 400)
+                                .scrollContentBackground(.hidden)
+                        } else {
+                            Text(displayText)
+                                .font(.body)
+                                .textSelection(.enabled)
+                        }
                     }
 
                     if !displayText.isEmpty && !isGenerating {
@@ -64,25 +75,66 @@ struct BlogView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if !displayText.isEmpty && !isGenerating {
-                        Button {
-                            showShareSheet = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
+                    if isEditing {
+                        Button("Done") {
+                            commitEdits()
                         }
-                    }
-                    Button("History") {
-                        appState.navigateTo(.history)
+                        .fontWeight(.semibold)
+                    } else {
+                        Menu {
+                            if !displayText.isEmpty && !isGenerating {
+                                Button {
+                                    editableText = displayText
+                                    isEditing = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                Button {
+                                    showShareSheet = true
+                                } label: {
+                                    Label("Share Blog", systemImage: "square.and.arrow.up")
+                                }
+                                if post.audioFileURL != nil {
+                                    Button {
+                                        showAudioShareSheet = true
+                                    } label: {
+                                        Label("Share Audio", systemImage: "waveform")
+                                    }
+                                }
+                                Divider()
+                            }
+                            Button {
+                                appState.navigateTo(.history)
+                            } label: {
+                                Label("History", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+ 
                     }
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [displayText])
+                ShareSheet(items: [shareText])
+            }
+            .sheet(isPresented: $showAudioShareSheet) {
+                if let audioURL = post.audioFileURL {
+                    ShareSheet(items: [audioURL])
+                }
             }
             .task {
                 await generateIfNeeded()
             }
         }
+    }
+
+    private func commitEdits() {
+        post.blogContent = editableText
+        post.title = PromptBuilder.extractTitle(from: editableText)
+        try? modelContext.save()
+        streamedText = ""
+        isEditing = false
     }
 
     private func generateIfNeeded() async {

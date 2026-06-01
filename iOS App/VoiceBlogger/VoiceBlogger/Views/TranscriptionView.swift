@@ -2,11 +2,11 @@ import SwiftUI
 import SwiftData
 
 struct TranscriptionView: View {
-    let audioURL: URL
+    let post: BlogPost
     @Environment(AppState.self) var appState
+    @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
 
-    @State private var transcript = ""
     @State private var isTranscribing = false
     @State private var useTranslation = false
     @State private var selectedLanguage = "auto"
@@ -62,63 +62,110 @@ struct TranscriptionView: View {
                     Section {
                         Text(error).foregroundStyle(.red)
                         Button("Retry") { runTranscription() }
+                        Button("Reset & Re-download Models", role: .destructive) {
+                            downloadManager.resetDownloads()
+                            appState.navigateTo(.modelDownload)
+                        }
                     }
-                } else if !transcript.isEmpty {
+                }
+
+                // Crash-recovery banner for interrupted transcription
+                if !isTranscribing && post.transcriptionState == .inProgress {
+                    Section {
+                        Label("Transcription was interrupted", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !post.transcript.isEmpty {
                     Section("Transcript") {
-                        Text(transcript)
-                            .font(.body)
-                            .textSelection(.enabled)
+                        ScrollView {
+                            Text(post.transcript)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 300)
                     }
 
-                    Section {
-                        Button("Generate Blog Post") {
-                            generateBlog()
+                    if !isTranscribing {
+                        Section {
+                            Button("Generate Blog Post") {
+                                generateBlog()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .buttonStyle(.borderedProminent)
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .buttonStyle(.borderedProminent)
+                        .listRowBackground(Color.clear)
                     }
-                    .listRowBackground(Color.clear)
                 }
             }
             .navigationTitle("Transcription")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Discard") {
-                        try? FileManager.default.removeItem(at: audioURL)
+                    Button("Back") {
                         appState.navigateTo(.recording)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Transcribe") { runTranscription() }
-                        .disabled(isTranscribing)
+                    if !isTranscribing && post.audioFileURL != nil &&
+                        (post.transcriptionState != .untranscribed || !post.transcript.isEmpty) {
+                        Button("Re-transcribe") {
+                            post.transcript = ""
+                            post.transcriptionState = .untranscribed
+                            runTranscription()
+                        }
+                    }
                 }
             }
-            .task { runTranscription() }
+            .task {
+                if post.transcriptionState == .untranscribed {
+                    runTranscription()
+                }
+            }
         }
     }
 
     private func runTranscription() {
+        guard let audioURL = post.audioFileURL else {
+            error = "Audio file not found. The recording may have been deleted."
+            return
+        }
         isTranscribing = true
         error = nil
+        post.transcriptionState = .inProgress
+
         Task {
             do {
-                let service = try await TranscriptionService.make()
-                transcript = try await service.transcribe(audioURL: audioURL, mode: currentMode)
+                let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
+                let finalText = try await service.transcribe(
+                    audioURL: audioURL,
+                    mode: currentMode,
+                    onPartial: { partial in
+                        Task { @MainActor in
+                            post.transcript = partial
+                        }
+                    }
+                )
+                // Free WhisperKit memory before LLM generation to prevent OOM.
+                service.cleanup()
+                downloadManager.whisperKit = nil
+                post.transcript = finalText
+                post.transcriptionState = .complete
+                try? modelContext.save()
             } catch {
                 self.error = error.localizedDescription
+                // Leave state as .inProgress so the recovery banner shows on next open
             }
             isTranscribing = false
         }
     }
 
     private func generateBlog() {
-        let post = BlogPost(
-            title: "",
-            transcript: transcript,
-            audioFilename: audioURL.lastPathComponent
-        )
-        modelContext.insert(post)
-        appState.navigateTo(.generatingBlog(transcript: transcript, post: post))
+        appState.navigateTo(.generatingBlog(transcript: post.transcript, post: post))
     }
 }

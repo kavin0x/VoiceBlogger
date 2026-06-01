@@ -31,8 +31,8 @@ struct ContentView: View {
         case .recording:
             RecordingView()
 
-        case .transcribing(let audioURL):
-            TranscriptionView(audioURL: audioURL)
+        case .transcribing(let post):
+            TranscriptionView(post: post)
 
         case .generatingBlog(let transcript, let post):
             BlogView(post: post, transcript: transcript)

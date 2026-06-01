@@ -1,3 +1,8 @@
+#Build Logs
+buildlogs/*
+buildlogs/
+buildlogs
+
 # Audio input files and raw transcripts
 Raw_Data/
 
