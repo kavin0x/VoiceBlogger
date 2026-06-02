@@ -4,6 +4,7 @@ import SwiftData
 struct InstagramView: View {
     let post: BlogPost
     @Environment(AppState.self) var appState
+    @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
 
     @State private var streamedText = ""
@@ -117,22 +118,38 @@ struct InstagramView: View {
 
     private func generateIfNeeded() async {
         guard post.instagramCaptions.isEmpty && !didComplete else { return }
+        let blogContent = post.blogContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !blogContent.isEmpty else {
+            generationError = "Generate a blog post before creating Instagram captions."
+            return
+        }
+
         isGenerating = true
         generationError = nil
+        defer { isGenerating = false }
+
         do {
-            let service = try await LLMService.make()
+            downloadManager.prepareForLLMGeneration(releaseLLM: true)
+            try await Task.sleep(nanoseconds: 750_000_000)
+            let service = try await downloadManager.loadedLLMService()
             var fullText = ""
-            for try await chunk in service.generateInstagramCaptions(blogContent: post.blogContent) {
+            for try await chunk in service.generateInstagramCaptions(blogContent: blogContent) {
+                if Task.isCancelled { return }
                 streamedText += chunk
                 fullText += chunk
             }
+            guard !fullText.isEmpty else { return }
             post.instagramCaptions = fullText
             try? modelContext.save()
             didComplete = true
+            downloadManager.releaseLLMService()
+        } catch is CancellationError {
+            downloadManager.releaseLLMService()
+            return
         } catch {
+            downloadManager.releaseLLMService()
             generationError = error.localizedDescription
         }
-        isGenerating = false
     }
 }
 
