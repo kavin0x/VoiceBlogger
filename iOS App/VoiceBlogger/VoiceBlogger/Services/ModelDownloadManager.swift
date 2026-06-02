@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import CoreML
 import WhisperKit
+import MLX
 import MLXLLM
 import MLXLMCommon
 
@@ -11,6 +12,7 @@ let kWhisperModelID = "openai_whisper-medium"
 private let kWhisperReadyKey = "whisperModelReady_v4"
 private let kLLMReadyKey = "llmModelReady_v1"
 
+@MainActor
 @Observable
 final class ModelDownloadManager {
     var whisperProgress: Double = 0
@@ -22,6 +24,10 @@ final class ModelDownloadManager {
 
     // Retained after download so TranscriptionService can reuse it without reloading from disk.
     @ObservationIgnored var whisperKit: WhisperKit?
+
+    // Retained so BlogView and InstagramView share one loaded instance — loading it twice OOMs.
+    @ObservationIgnored var llmService: LLMService?
+    @ObservationIgnored private var llmLoadTask: Task<LLMService, Error>?
 
     var allModelsReady: Bool { isWhisperReady && isLLMReady }
 
@@ -68,21 +74,61 @@ final class ModelDownloadManager {
 
     private func downloadLLM() async {
         do {
-            let _ = try await LLMModelFactory.shared.loadContainer(
-                from: HubDownloader(),
-                using: HuggingFaceTokenizerLoader(),
-                configuration: ModelConfiguration(id: kLLMModelID),
-                progressHandler: { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        self?.llmProgress = progress.fractionCompleted
-                    }
+            _ = try await LLMService.make { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.llmProgress = progress.fractionCompleted
                 }
-            )
+            }
+            releaseLLMService()
             llmProgress = 1.0
             isLLMReady = true
             UserDefaults.standard.set(true, forKey: kLLMReadyKey)
         } catch {
             downloadError = "LLM: \(error.localizedDescription)"
+        }
+    }
+
+    func loadedLLMService() async throws -> LLMService {
+        try await loadLLMService()
+    }
+
+    func prepareForLLMGeneration(releaseLLM: Bool = false) {
+        whisperKit = nil
+        if releaseLLM {
+            releaseLLMService()
+        }
+        MLX.Memory.clearCache()
+    }
+
+    func releaseLLMService() {
+        llmLoadTask?.cancel()
+        llmLoadTask = nil
+        llmService = nil
+        MLX.Memory.clearCache()
+    }
+
+    private func loadLLMService(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
+        if let llmService {
+            return llmService
+        }
+
+        if let llmLoadTask {
+            return try await llmLoadTask.value
+        }
+
+        let task = Task {
+            try await LLMService.make(progressHandler: progressHandler)
+        }
+        llmLoadTask = task
+
+        do {
+            let service = try await task.value
+            llmService = service
+            llmLoadTask = nil
+            return service
+        } catch {
+            llmLoadTask = nil
+            throw error
         }
     }
 
@@ -94,6 +140,8 @@ final class ModelDownloadManager {
         whisperProgress = 0
         llmProgress = 0
         downloadError = nil
+        whisperKit = nil
+        releaseLLMService()
 
         // Delete cached model files so stale/wrong-ID models don't block re-download
         let fm = FileManager.default
