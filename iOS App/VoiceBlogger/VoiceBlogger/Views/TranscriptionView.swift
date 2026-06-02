@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import MLX
 
 struct TranscriptionView: View {
     let post: BlogPost
@@ -154,6 +155,7 @@ struct TranscriptionView: View {
                 // Free WhisperKit memory before LLM generation to prevent OOM.
                 service.cleanup()
                 downloadManager.whisperKit = nil
+                MLX.Memory.clearCache()
                 post.transcript = finalText
                 post.transcriptionState = .complete
                 try? modelContext.save()
@@ -166,6 +168,7 @@ struct TranscriptionView: View {
     }
 
     private func generateBlog() {
+        downloadManager.prepareForLLMGeneration()
         appState.navigateTo(.generatingBlog(transcript: post.transcript, post: post))
     }
 }
