@@ -75,7 +75,7 @@ struct RecordingView: View {
 
                 Spacer()
             }
-            .navigationTitle("VoiceBlogger")
+            .navigationTitle("Voice Blogger")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
