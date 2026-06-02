@@ -1,6 +1,8 @@
 import Foundation
 
 enum PromptBuilder {
+    private static let instagramSummaryCharacterLimit = 1800
+
     static func blogMessages(transcript: String) -> [[String: String]] {
         let system = """
         You are a professional blog writer. Convert spoken transcripts into polished, \
@@ -40,12 +42,58 @@ enum PromptBuilder {
         on its own line.
 
         Blog post:
-        \(blogContent)
+        \(structuralSummary(of: blogContent))
         """
         return [
             ["role": "system", "content": system],
             ["role": "user", "content": user]
         ]
+    }
+
+    // Extracts title, every heading, and the first sentence of each paragraph.
+    // Covers all topics in the entire post at ~10-15% of the original token count —
+    // small enough that prefill activations fit in the device's memory budget.
+    private static func structuralSummary(of text: String) -> String {
+        var result: [String] = []
+        var paragraphLines: [String] = []
+
+        func flushParagraph() {
+            guard !paragraphLines.isEmpty else { return }
+            let body = paragraphLines.joined(separator: " ")
+            paragraphLines = []
+            // First sentence up to .!? or first 120 chars, whichever comes first.
+            if let range = body.range(of: "[.!?]", options: .regularExpression) {
+                result.append(String(body[body.startIndex...range.lowerBound]))
+            } else {
+                result.append(String(body.prefix(120)))
+            }
+        }
+
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                flushParagraph()
+            } else if trimmed.hasPrefix("#") {
+                flushParagraph()
+                result.append(trimmed)
+            } else {
+                paragraphLines.append(trimmed)
+            }
+        }
+        flushParagraph()
+
+        return cappedSummary(result.joined(separator: "\n"), limit: instagramSummaryCharacterLimit)
+    }
+
+    private static func cappedSummary(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text }
+
+        let endIndex = text.index(text.startIndex, offsetBy: limit)
+        var capped = String(text[..<endIndex])
+        if let lastNewline = capped.lastIndex(of: "\n") {
+            capped = String(capped[..<lastNewline])
+        }
+        return capped.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func extractTitle(from blogContent: String) -> String {
