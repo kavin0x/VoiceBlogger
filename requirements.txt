@@ -1,3 +1,0 @@
-mlx-whisper
-tqdm
-requests
