@@ -1,6 +1,69 @@
 import SwiftUI
 import SwiftData
 
+// Renders markdown headings (# / ## / ###) and inline styles via AttributedString.
+private struct MarkdownView: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                blockView(block)
+            }
+        }
+    }
+
+    private enum Block {
+        case h1(String), h2(String), h3(String), body(String)
+    }
+
+    private var blocks: [Block] {
+        var result: [Block] = []
+        var pending: [String] = []
+
+        func flush() {
+            let joined = pending.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !joined.isEmpty { result.append(.body(joined)) }
+            pending = []
+        }
+
+        for line in text.components(separatedBy: "\n") {
+            if line.hasPrefix("### ") {
+                flush(); result.append(.h3(String(line.dropFirst(4))))
+            } else if line.hasPrefix("## ") {
+                flush(); result.append(.h2(String(line.dropFirst(3))))
+            } else if line.hasPrefix("# ") {
+                flush(); result.append(.h1(String(line.dropFirst(2))))
+            } else {
+                pending.append(line)
+            }
+        }
+        flush()
+        return result
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: Block) -> some View {
+        switch block {
+        case .h1(let s):
+            Text(inlineMarkdown(s)).font(.title).fontWeight(.bold)
+        case .h2(let s):
+            Text(inlineMarkdown(s)).font(.title2).fontWeight(.semibold)
+        case .h3(let s):
+            Text(inlineMarkdown(s)).font(.title3).fontWeight(.semibold)
+        case .body(let s):
+            Text(inlineMarkdown(s)).font(.body)
+        }
+    }
+
+    private func inlineMarkdown(_ string: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: string,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(string)
+    }
+}
+
 struct BlogView: View {
     let post: BlogPost
     let transcript: String
@@ -47,8 +110,7 @@ struct BlogView: View {
                                 .frame(minHeight: 400)
                                 .scrollContentBackground(.hidden)
                         } else {
-                            Text(displayText)
-                                .font(.body)
+                            MarkdownView(text: displayText)
                                 .textSelection(.enabled)
                         }
                     }
