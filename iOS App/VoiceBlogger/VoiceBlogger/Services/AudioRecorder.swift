@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import Observation
 
+@MainActor
 @Observable
 final class AudioRecorder: NSObject {
     var isRecording = false
@@ -83,11 +84,13 @@ final class AudioRecorder: NSObject {
 
     private func startTimers() {
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.updateLevels()
+            MainActor.assumeIsolated { self?.updateLevels() }
         }
         durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let start = self?.recordingStartTime else { return }
-            self?.duration = Date.now.timeIntervalSince(start)
+            MainActor.assumeIsolated {
+                guard let start = self?.recordingStartTime else { return }
+                self?.duration = Date.now.timeIntervalSince(start)
+            }
         }
     }
 

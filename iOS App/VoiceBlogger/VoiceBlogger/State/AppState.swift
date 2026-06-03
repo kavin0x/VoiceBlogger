@@ -16,6 +16,7 @@ enum AppStage: Equatable {
         case (.recording, .recording): return true
         case (.history, .history): return true
         case (.transcribing(let a), .transcribing(let b)): return a.id == b.id
+        case (.generatingBlog(_, let a), .generatingBlog(_, let b)): return a.id == b.id
         case (.viewingBlog(let a), .viewingBlog(let b)): return a.id == b.id
         case (.viewingInstagram(let a), .viewingInstagram(let b)): return a.id == b.id
         default: return false
