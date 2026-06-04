@@ -129,8 +129,8 @@ struct InstagramView: View {
         defer { isGenerating = false }
 
         do {
-            downloadManager.prepareForLLMGeneration(releaseLLM: true)
-            try await Task.sleep(nanoseconds: 750_000_000)
+            // LLM is already loaded from blog generation; just clear whisperKit residual.
+            downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
             var fullText = ""
             for try await chunk in service.generateInstagramCaptions(blogContent: blogContent) {
@@ -140,7 +140,7 @@ struct InstagramView: View {
             }
             guard !fullText.isEmpty else { return }
             post.instagramCaptions = fullText
-            try? modelContext.save()
+            savePostContext()
             didComplete = true
             downloadManager.releaseLLMService()
         } catch is CancellationError {
@@ -150,6 +150,10 @@ struct InstagramView: View {
             downloadManager.releaseLLMService()
             generationError = error.localizedDescription
         }
+    }
+
+    private func savePostContext() {
+        try? (post.modelContext ?? modelContext).save()
     }
 }
 
