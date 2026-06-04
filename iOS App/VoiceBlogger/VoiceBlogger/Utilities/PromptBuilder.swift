@@ -34,7 +34,8 @@ enum PromptBuilder {
         let system = """
         You are a social media content creator specialising in Instagram. \
         Write punchy, engaging Instagram captions that drive engagement. \
-        Use relevant hashtags and emojis. Keep each caption under 300 words.
+        Use relevant hashtags and emojis. Keep each caption under 400 words. \
+        Make sure to include the actual info, and at the end tell them to keep reading to see the full blog!
         """
         let user = """
         Based on this blog post, write 3 distinct Instagram captions targeting different angles \
