@@ -48,6 +48,18 @@ struct ModelDownloadView: View {
                     Task { await downloadManager.downloadAll() }
                 }
                 .buttonStyle(.borderedProminent)
+            } else if downloadManager.allModelsReady {
+                VStack(spacing: 12) {
+                    Label("All models are ready", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.green)
+
+                    Button("Continue") {
+                        appState.navigateTo(.recording)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
             } else if downloadManager.isDownloading {
                 ProgressView("Downloading…")
             } else if !downloadManager.allModelsReady {
@@ -64,11 +76,6 @@ struct ModelDownloadView: View {
         .onAppear {
             if !downloadManager.allModelsReady && !downloadManager.isDownloading {
                 Task { await downloadManager.downloadAll() }
-            }
-        }
-        .onChange(of: downloadManager.allModelsReady) { _, ready in
-            if ready {
-                appState.navigateTo(.recording)
             }
         }
     }
