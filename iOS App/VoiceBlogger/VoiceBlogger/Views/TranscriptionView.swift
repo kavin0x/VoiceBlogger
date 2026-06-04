@@ -55,7 +55,7 @@ struct TranscriptionView: View {
                     Section {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Transcribing with Whisper…")
+                            Text("Transcribing with Whisper… Please keep the app open!")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -94,11 +94,17 @@ struct TranscriptionView: View {
 
                     if !isTranscribing {
                         Section {
-                            Button("Generate Blog Post") {
+                            Button {
                                 generateBlog()
+                            } label: {
+                                Text("Generate Blog Post")
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
                             .buttonStyle(.borderedProminent)
+                            .disabled(!BlogGenerationHandoff.canGenerateBlog(
+                                from: post.transcript,
+                                isBusy: false
+                            ))
                         }
                         .listRowBackground(Color.clear)
                     }
@@ -153,7 +159,7 @@ struct TranscriptionView: View {
                     }
                 )
                 // Free WhisperKit memory before LLM generation to prevent OOM.
-                service.cleanup()
+                await service.cleanup()
                 downloadManager.whisperKit = nil
                 MLX.Memory.clearCache()
                 post.transcript = finalText
@@ -168,7 +174,18 @@ struct TranscriptionView: View {
     }
 
     private func generateBlog() {
-        downloadManager.prepareForLLMGeneration()
-        appState.navigateTo(.generatingBlog(transcript: post.transcript, post: post))
+        guard BlogGenerationHandoff.canGenerateBlog(
+            from: post.transcript,
+            isBusy: false
+        ) else {
+            return
+        }
+
+        let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
+        post.transcript = transcript
+        post.transcriptionState = .complete
+        try? modelContext.save()
+        downloadManager.prepareForLLMGeneration(releaseLLM: true)
+        appState.navigateTo(.preparingBlog(postID: post.id))
     }
 }
