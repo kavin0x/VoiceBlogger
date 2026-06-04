@@ -34,11 +34,14 @@ struct ContentView: View {
         case .transcribing(let post):
             TranscriptionView(post: post)
 
-        case .generatingBlog(let transcript, let post):
-            BlogView(post: post, transcript: transcript)
+        case .preparingBlog(let postID):
+            BlogGenerationPrepView(postID: postID)
+
+        case .generatingBlog(let post):
+            BlogView(post: post)
 
         case .viewingBlog(let post):
-            BlogView(post: post, transcript: post.transcript)
+            BlogView(post: post)
 
         case .viewingInstagram(let post):
             InstagramView(post: post)
