@@ -1,11 +1,13 @@
 import Foundation
 import Observation
+import SwiftData
 
 enum AppStage: Equatable {
     case modelDownload
     case recording
     case transcribing(post: BlogPost)
-    case generatingBlog(transcript: String, post: BlogPost)
+    case preparingBlog(postID: UUID)
+    case generatingBlog(post: BlogPost)
     case viewingBlog(post: BlogPost)
     case viewingInstagram(post: BlogPost)
     case history
@@ -16,7 +18,8 @@ enum AppStage: Equatable {
         case (.recording, .recording): return true
         case (.history, .history): return true
         case (.transcribing(let a), .transcribing(let b)): return a.id == b.id
-        case (.generatingBlog(_, let a), .generatingBlog(_, let b)): return a.id == b.id
+        case (.preparingBlog(let a), .preparingBlog(let b)): return a == b
+        case (.generatingBlog(let a), .generatingBlog(let b)): return a.id == b.id
         case (.viewingBlog(let a), .viewingBlog(let b)): return a.id == b.id
         case (.viewingInstagram(let a), .viewingInstagram(let b)): return a.id == b.id
         default: return false
@@ -29,6 +32,7 @@ final class AppState {
     var stage: AppStage = .recording
     var errorMessage: String?
     var showError = false
+    @ObservationIgnored var generationModelContext: ModelContext?
 
     func navigateTo(_ stage: AppStage) {
         self.stage = stage
