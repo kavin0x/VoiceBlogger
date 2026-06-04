@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
-
+    
 struct RecordingView: View {
     @Environment(AppState.self) var appState
     @Environment(AudioRecorder.self) var recorder
@@ -157,24 +157,29 @@ struct RecordingView: View {
     }
 
     private func importAudioFile(from url: URL) {
-        Task {
+        guard url.startAccessingSecurityScopedResource() else {
+            appState.showError("Could not access the selected file.")
+            return
+        }
+        let recordingsDir = URL.recordingsDirectory
+        Task.detached {
             do {
-                let recordingsDir = URL.recordingsDirectory
                 try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
                 let filename = UUID().uuidString + "." + url.pathExtension
                 let destURL = recordingsDir.appendingPathComponent(filename)
-                guard url.startAccessingSecurityScopedResource() else {
-                    appState.showError("Could not access the selected file.")
-                    return
-                }
-                defer { url.stopAccessingSecurityScopedResource() }
                 try FileManager.default.copyItem(at: url, to: destURL)
-                let post = BlogPost(audioFilename: filename, transcriptionState: .untranscribed)
-                modelContext.insert(post)
-                try? modelContext.save()
-                appState.navigateTo(.transcribing(post: post))
+                url.stopAccessingSecurityScopedResource()
+                await MainActor.run {
+                    let post = BlogPost(audioFilename: filename, transcriptionState: .untranscribed)
+                    modelContext.insert(post)
+                    try? modelContext.save()
+                    appState.navigateTo(.transcribing(post: post))
+                }
             } catch {
-                appState.showError("Failed to import audio: \(error.localizedDescription)")
+                url.stopAccessingSecurityScopedResource()
+                await MainActor.run {
+                    appState.showError("Failed to import audio: \(error.localizedDescription)")
+                }
             }
         }
     }
