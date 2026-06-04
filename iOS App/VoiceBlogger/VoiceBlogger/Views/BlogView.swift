@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 // Renders markdown headings (# / ## / ###) and inline styles via AttributedString.
 private struct MarkdownView: View {
@@ -66,7 +67,6 @@ private struct MarkdownView: View {
 
 struct BlogView: View {
     let post: BlogPost
-    let transcript: String
     @Environment(AppState.self) var appState
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
@@ -195,20 +195,33 @@ struct BlogView: View {
     private func commitEdits() {
         post.blogContent = editableText
         post.title = PromptBuilder.extractTitle(from: editableText)
-        try? modelContext.save()
+        savePostContext()
         streamedText = ""
         isEditing = false
     }
 
+    private func savePostContext() {
+        try? (post.modelContext ?? modelContext).save()
+    }
+
     private func generateIfNeeded() async {
-        guard post.blogContent.isEmpty && !didComplete else { return }
+        guard !isGenerating && post.blogContent.isEmpty && !didComplete else { return }
+        let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
+        guard !transcript.isEmpty else {
+            generationError = "Transcript is empty. Re-transcribe before generating a blog post."
+            return
+        }
+
         isGenerating = true
         generationError = nil
         defer { isGenerating = false }
 
         do {
-            downloadManager.prepareForLLMGeneration(releaseLLM: true)
-            try await Task.sleep(nanoseconds: 750_000_000)
+            if !downloadManager.hasLoadedLLMService {
+                await downloadManager.prepareForLLMGenerationBarrier()
+            }
+            let availMB = os_proc_available_memory() / (1024 * 1024)
+            os_log("BlogView: available memory before LLM load = %lu MB", type: .info, availMB)
             let service = try await downloadManager.loadedLLMService()
             var fullText = ""
             for try await chunk in service.generateBlog(transcript: transcript) {
@@ -219,9 +232,9 @@ struct BlogView: View {
             guard !fullText.isEmpty else { return }
             post.blogContent = fullText
             post.title = PromptBuilder.extractTitle(from: fullText)
-            try? modelContext.save()
+            savePostContext()
             didComplete = true
-            downloadManager.releaseLLMService()
+            // Keep LLM loaded — InstagramView reuses it immediately after blog generation.
         } catch is CancellationError {
             downloadManager.releaseLLMService()
             return
