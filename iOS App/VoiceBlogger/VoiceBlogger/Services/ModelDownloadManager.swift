@@ -30,6 +30,7 @@ final class ModelDownloadManager {
     @ObservationIgnored private var llmLoadTask: Task<LLMService, Error>?
 
     var allModelsReady: Bool { isWhisperReady && isLLMReady }
+    var hasLoadedLLMService: Bool { llmService != nil }
 
     init() {
         isWhisperReady = UserDefaults.standard.bool(forKey: kWhisperReadyKey)
@@ -98,6 +99,14 @@ final class ModelDownloadManager {
             releaseLLMService()
         }
         MLX.Memory.clearCache()
+    }
+
+    func prepareForLLMGenerationBarrier(releaseLLM: Bool = false) async {
+        prepareForLLMGeneration(releaseLLM: releaseLLM)
+        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(750))
+        MLX.Memory.clearCache()
+        await Task.yield()
     }
 
     func releaseLLMService() {

@@ -32,8 +32,12 @@ final class TranscriptionService: @unchecked Sendable {
         return TranscriptionService(whisperKit: kit)
     }
 
-    // Release the WhisperKit instance so GPU/ANE memory is freed before LLM runs.
-    func cleanup() {
+    // Explicitly unload CoreML models before releasing the WhisperKit instance.
+    // WhisperKit's deinit only stops audio recording — it does NOT call unloadModels(),
+    // so without this call the MLModel Metal buffers remain allocated until the OS reclaims
+    // them under pressure, causing an OOM kill when the LLM then loads in the same process.
+    func cleanup() async {
+        await whisperKit?.unloadModels()
         whisperKit = nil
     }
 

@@ -9,7 +9,7 @@ final class LLMService: Sendable {
 
     init(container: ModelContainer) {
         self.container = container
-        MLX.Memory.cacheLimit = 512 * 1024 * 1024
+        MLX.Memory.cacheLimit = 768 * 1024 * 1024
     }
 
     static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
