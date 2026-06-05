@@ -11,6 +11,7 @@ struct RecordingView: View {
     @State private var showPermissionAlert = false
     @State private var showFilePicker = false
     @State private var showResetConfirm = false
+    @State private var showAbout = false
 
     var body: some View {
         NavigationStack {
@@ -87,6 +88,10 @@ struct RecordingView: View {
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
+                        Button("About", systemImage: "info.circle") {
+                            showAbout = true
+                        }
+                        Divider()
                         Button("Reset & Re-download Models", systemImage: "arrow.trianglehead.2.clockwise", role: .destructive) {
                             showResetConfirm = true
                         }
@@ -116,6 +121,10 @@ struct RecordingView: View {
                 if case .success(let urls) = result, let url = urls.first {
                     importAudioFile(from: url)
                 }
+            }
+            .sheet(isPresented: $showAbout) {
+                AboutView()
+                    .presentationDetents([.medium])
             }
             .alert("Microphone Access Required", isPresented: $showPermissionAlert) {
                 Button("Open Settings") {
