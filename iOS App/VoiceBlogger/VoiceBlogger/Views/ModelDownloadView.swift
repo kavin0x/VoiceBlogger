@@ -23,8 +23,8 @@ struct ModelDownloadView: View {
             VStack(spacing: 20) {
                 DownloadRowView(
                     icon: "waveform",
-                    title: "Speech Recognition",
-                    subtitle: "~800 MB",
+                    title: "Advanced Speech Recognition",
+                    subtitle: "~800 MB (Supports up to 90+ languages)",
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
