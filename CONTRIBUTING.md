@@ -7,7 +7,7 @@ Getting started
 ---------------
 
 - Fork the repository and create a feature branch from `main` named `feat/short-description` or `fix/short-description`.
-- Keep commits small and focused. Use clear commit messages in the form: `scope: short description` (e.g. `transcribe: handle empty input`).
+- Keep commits small and focused. Use clear commit messages in the `form: type (scope)` `short description` (e.g. `fix(transcribe): handle empty input`).
 Make sure to use [Conventional Commits]([text](https://www.conventionalcommits.org/en/v1.0.0/))
 
 Development setup (Python)
