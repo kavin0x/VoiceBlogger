@@ -24,6 +24,7 @@ final class ModelDownloadManager {
 
     // Retained after download so TranscriptionService can reuse it without reloading from disk.
     @ObservationIgnored var whisperKit: WhisperKit?
+    @ObservationIgnored private var whisperWarmTask: Task<Void, Never>?
 
     // Retained so BlogView and InstagramView share one loaded instance — loading it twice OOMs.
     @ObservationIgnored var llmService: LLMService?
@@ -37,6 +38,29 @@ final class ModelDownloadManager {
         isLLMReady = UserDefaults.standard.bool(forKey: kLLMReadyKey)
         if isWhisperReady { whisperProgress = 1.0 }
         if isLLMReady { llmProgress = 1.0 }
+    }
+
+    func warmWhisper() async {
+        guard isWhisperReady, whisperKit == nil, whisperWarmTask == nil else { return }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let config = WhisperKitConfig(
+                model: kWhisperModelID,
+                computeOptions: ModelComputeOptions(
+                    audioEncoderCompute: .cpuAndGPU,
+                    textDecoderCompute: .cpuAndGPU
+                )
+            )
+            guard let kit = try? await WhisperKit(config) else { return }
+            try? await kit.loadModels()
+            await MainActor.run { [weak self] in
+                guard let self, self.whisperKit == nil else { return }
+                self.whisperKit = kit
+                self.whisperWarmTask = nil
+            }
+        }
+        whisperWarmTask = task
+        await task.value
     }
 
     func downloadAll() async {
@@ -54,16 +78,48 @@ final class ModelDownloadManager {
     private func downloadWhisper() async {
         do {
             whisperProgress = 0.05
-            // WhisperKit downloads the CoreML model from argmaxinc/whisperkit-coreml on first init.
-            // Use cpuAndGPU to avoid ANE failures on devices with unknown/mismatched ANE hardware.
+            // WhisperKit doesn't expose a progress callback through WhisperKitConfig, so
+            // use a two-phase init: download-only first (load: false), then set the
+            // modelStateCallback before calling loadModels() so UI sees loading progress.
             let config = WhisperKitConfig(
                 model: kWhisperModelID,
                 computeOptions: ModelComputeOptions(
                     audioEncoderCompute:  .cpuAndGPU,
                     textDecoderCompute: .cpuAndGPU
-                )
+                ),
+                load: false
             )
+            // Phase 1: download model files (~80% of total time). No callback available here,
+            // so animate progress smoothly to 0.45 while we wait.
+            let progressTask = Task { @MainActor [weak self] in
+                var p = 0.05
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard let self, !self.isWhisperReady else { return }
+                    p = min(p + 0.02, 0.45)
+                    self.whisperProgress = p
+                }
+            }
             let kit = try await WhisperKit(config)
+            progressTask.cancel()
+
+            // Phase 2: load CoreML models into memory — observable via modelStateCallback.
+            whisperProgress = 0.5
+            kit.modelStateCallback = { [weak self] _, newState in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.isWhisperReady else { return }
+                    switch newState {
+                    case .loading:    self.whisperProgress = 0.6
+                    case .prewarming: self.whisperProgress = 0.8
+                    case .prewarmed:  self.whisperProgress = 0.9
+                    case .loaded:     self.whisperProgress = 0.95
+                    default: break
+                    }
+                }
+            }
+            try await kit.loadModels()
+            kit.modelStateCallback = nil
+
             whisperKit = kit
             whisperProgress = 1.0
             isWhisperReady = true
@@ -76,11 +132,12 @@ final class ModelDownloadManager {
     private func downloadLLM() async {
         do {
             _ = try await LLMService.make { [weak self] progress in
+                // LLMModelFactory calls this handler from an arbitrary thread;
+                // hop to MainActor to safely update the @Observable property.
                 Task { @MainActor [weak self] in
-                    self?.llmProgress = progress.fractionCompleted
+                    self?.llmProgress = max(0.05, progress.fractionCompleted)
                 }
             }
-            releaseLLMService()
             llmProgress = 1.0
             isLLMReady = true
             UserDefaults.standard.set(true, forKey: kLLMReadyKey)
