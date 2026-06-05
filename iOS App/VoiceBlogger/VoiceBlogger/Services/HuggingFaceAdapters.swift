@@ -8,8 +8,17 @@ import Tokenizers
 struct HubDownloader: MLXLMCommon.Downloader {
     private let upstream: HuggingFace.HubClient
 
-    init(_ upstream: HuggingFace.HubClient = HubClient()) {
+    init(_ upstream: HuggingFace.HubClient = HubDownloader.makeClient()) {
         self.upstream = upstream
+    }
+
+    // downloadSnapshot downloads up to 8 files concurrently; bump the per-host
+    // connection limit so all 8 can open TCP connections simultaneously instead
+    // of queuing behind the default limit of 6.
+    private static func makeClient() -> HuggingFace.HubClient {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 16
+        return HubClient(session: URLSession(configuration: config))
     }
 
     func download(
