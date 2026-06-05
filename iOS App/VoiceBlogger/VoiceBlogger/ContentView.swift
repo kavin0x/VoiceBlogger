@@ -3,10 +3,13 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppState.self) var appState
     @Environment(ModelDownloadManager.self) var downloadManager
+    @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     var body: some View {
         Group {
-            if !downloadManager.allModelsReady {
+            if !onboardingComplete && !downloadManager.allModelsReady {
+                OnboardingView()
+            } else if !downloadManager.allModelsReady {
                 ModelDownloadView()
             } else {
                 stageView
