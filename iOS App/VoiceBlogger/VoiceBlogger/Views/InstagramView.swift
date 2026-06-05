@@ -60,14 +60,10 @@ struct InstagramView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        let text = captions.indices.contains(selectedCardIndex)
-                            ? captions[selectedCardIndex] : post.instagramCaptions
-                        shareText = text
-                        showShareSheet = true
+                        appState.navigateTo(.recording)
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
+                        Image(systemName: "xmark")
                     }
-                    .disabled(captions.isEmpty)
                 }
             }
             .sheet(isPresented: $showShareSheet) {
