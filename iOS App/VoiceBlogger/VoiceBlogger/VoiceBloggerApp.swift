@@ -23,6 +23,9 @@ struct VoiceBloggerApp: App {
                 .environment(appState)
                 .environment(audioRecorder)
                 .environment(downloadManager)
+                .task {
+                    await downloadManager.warmWhisper()
+                }
         }
         .modelContainer(sharedModelContainer)
     }
