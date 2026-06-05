@@ -189,6 +189,11 @@ struct BlogView: View {
             .task {
                 await generateIfNeeded()
             }
+            .onDisappear {
+                guard !isGenerating else { return }
+                downloadManager.releaseLLMService()
+                Task { await downloadManager.warmWhisper() }
+            }
         }
     }
 
