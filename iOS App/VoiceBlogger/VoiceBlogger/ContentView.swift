@@ -2,15 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) var appState
-    @Environment(ModelDownloadManager.self) var downloadManager
     @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     var body: some View {
         Group {
-            if !onboardingComplete && !downloadManager.allModelsReady {
+            if !onboardingComplete {
                 OnboardingView()
-            } else if !downloadManager.allModelsReady {
-                ModelDownloadView()
             } else {
                 stageView
             }
@@ -29,7 +26,7 @@ struct ContentView: View {
     private var stageView: some View {
         switch appState.stage {
         case .modelDownload:
-            ModelDownloadView()
+            RecordingView()
 
         case .recording:
             RecordingView()
