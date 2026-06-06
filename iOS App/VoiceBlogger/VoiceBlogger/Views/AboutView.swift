@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AboutView: View {
-    private let githubURL = URL(string: "https://github.com/kavin0/voiceblogger")!
+    private let githubURL = URL(string: "https://github.com/kavin0x/voiceblogger")!
     private let version: String = {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
