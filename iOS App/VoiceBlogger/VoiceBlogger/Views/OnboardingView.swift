@@ -14,17 +14,19 @@ struct OnboardingView: View {
                     .tag(1)
                 OnboardingBlogPage()
                     .tag(2)
-                OnboardingReadyPage { onboardingComplete = true }
+                OnboardingSupportPage()
                     .tag(3)
+                OnboardingReadyPage { onboardingComplete = true }
+                    .tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             VStack {
                 HStack {
                     Spacer()
-                    if currentPage < 3 {
+                    if currentPage < 4 {
                         Button("Skip") {
-                            withAnimation { currentPage = 3 }
+                            withAnimation { currentPage = 4 }
                         }
                         .foregroundStyle(.secondary)
                         .padding(.top, 56)
@@ -34,7 +36,7 @@ struct OnboardingView: View {
                 Spacer()
                 HStack {
                     HStack(spacing: 6) {
-                        ForEach(0..<4, id: \.self) { i in
+                        ForEach(0..<5, id: \.self) { i in
                             Capsule()
                                 .fill(i == currentPage ? Color.primary : Color.secondary.opacity(0.3))
                                 .frame(width: i == currentPage ? 20 : 8, height: 8)
@@ -42,7 +44,7 @@ struct OnboardingView: View {
                         }
                     }
                     Spacer()
-                    if currentPage < 3 {
+                    if currentPage < 4 {
                         Button("Next") {
                             withAnimation { currentPage += 1 }
                         }
@@ -142,7 +144,7 @@ private struct OnboardingRecordPage: View {
             VStack(spacing: 12) {
                 Text("Just speak your mind")
                     .font(.title2.bold())
-                Text("Record yourself talking about anything — no scripts or editing needed. Even long recordings work great.")
+                Text("Record yourself talking about anything — no scripts or editing needed. Even long recording... Just fine, just speak your mind!")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -224,7 +226,51 @@ private struct OnboardingBlogPage: View {
     }
 }
 
-// MARK: - Page 4: Privacy + download ready
+// MARK: - Page 4: Support
+
+private struct OnboardingSupportPage: View {
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            Image(systemName: "heart.fill")
+                .font(.system(size: 52))
+                .foregroundStyle(.pink)
+
+            VStack(spacing: 12) {
+                Text("Free & private, always")
+                    .font(.title2.bold())
+                Text("VoiceBlogger is completely free to use and all AI runs on your device — your data never leaves your phone, ever.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
+
+            VStack(spacing: 8) {
+                Text("If you find it useful, the only way to support me is through GitHub Sponsors.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+
+                Link(destination: URL(string: "https://github.com/sponsors/kavin0x")!) {
+                    Label("Support on GitHub", systemImage: "heart")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(.pink.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.pink)
+                }
+            }
+
+            Spacer()
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Page 5: Privacy + download ready
 
 private struct OnboardingReadyPage: View {
     @Environment(ModelDownloadManager.self) var downloadManager
