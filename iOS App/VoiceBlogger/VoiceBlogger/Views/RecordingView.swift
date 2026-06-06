@@ -34,6 +34,23 @@ struct RecordingView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Permission denied banner
+                if recorder.permissionDenied {
+                    VStack(spacing: 10) {
+                        Label("Microphone access is required to record.", systemImage: "mic.slash.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .font(.subheadline)
+                    }
+                    .padding(.horizontal, 32)
+                }
+
                 // Record button
                 Button {
                     if recorder.isRecording {
@@ -54,6 +71,8 @@ struct RecordingView: View {
                 .buttonStyle(.plain)
                 .scaleEffect(recorder.isRecording ? 1.05 : 1.0)
                 .animation(.spring(duration: 0.3), value: recorder.isRecording)
+                .disabled(recorder.permissionDenied)
+                .opacity(recorder.permissionDenied ? 0.4 : 1.0)
 
                 Text(recorder.isRecording ? "Tap to stop" : "Tap to record")
                     .font(.caption)
@@ -150,6 +169,10 @@ struct RecordingView: View {
             }
             do {
                 try await recorder.startRecording()
+                // Permission denied during the request (first tap after denial)
+                if recorder.permissionDenied {
+                    showPermissionAlert = true
+                }
             } catch {
                 appState.showError("Recording failed: \(error.localizedDescription)")
             }

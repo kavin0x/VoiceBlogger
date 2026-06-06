@@ -19,6 +19,9 @@ final class AudioRecorder: NSObject {
 
     override init() {
         super.init()
+        let status = AVAudioApplication.shared.recordPermission
+        permissionGranted = status == .granted
+        permissionDenied = status == .denied
     }
 
     func requestPermission() async {
