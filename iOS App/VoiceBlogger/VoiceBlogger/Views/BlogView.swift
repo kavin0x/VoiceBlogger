@@ -234,7 +234,10 @@ struct BlogView: View {
                 streamedText += chunk
                 fullText += chunk
             }
-            guard !fullText.isEmpty else { return }
+            guard !fullText.isEmpty else {
+                generationError = "No content was generated. Please try again."
+                return
+            }
             post.blogContent = fullText
             post.title = PromptBuilder.extractTitle(from: fullText)
             savePostContext()
