@@ -42,6 +42,21 @@ final class ModelDownloadManager {
 
     func warmWhisper() async {
         guard isWhisperReady, whisperKit == nil, whisperWarmTask == nil else { return }
+
+        // Guard: if model files were deleted (e.g. simulator sandbox reset) but UserDefaults
+        // still says ready, reset the flag so we don't pass a null path into WhisperKit's C++ layer.
+        let fm = FileManager.default
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let hfDir = docs.appendingPathComponent("huggingface")
+            if !fm.fileExists(atPath: hfDir.path(percentEncoded: false)) {
+                isWhisperReady = false
+                isLLMReady = false
+                UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+                UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+                return
+            }
+        }
+
         let task = Task { [weak self] in
             guard let self else { return }
             let config = WhisperKitConfig(
@@ -73,6 +88,28 @@ final class ModelDownloadManager {
         if downloadError == nil, !isLLMReady { await downloadLLM() }
 
         isDownloading = false
+    }
+
+    private func downloadErrorMessage(_ error: Error, for model: String) -> String {
+        func isNetworkError(_ e: Error) -> Bool {
+            let ns = e as NSError
+            if ns.domain == NSURLErrorDomain && [
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorTimedOut,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorCannotFindHost,
+                NSURLErrorDNSLookupFailed
+            ].contains(ns.code) { return true }
+            if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error {
+                return isNetworkError(underlying)
+            }
+            return false
+        }
+        if isNetworkError(error) {
+            return "No internet connection. Connect to Wi-Fi or cellular and tap Retry."
+        }
+        return "\(model): \(error.localizedDescription)"
     }
 
     private func downloadWhisper() async {
@@ -125,7 +162,7 @@ final class ModelDownloadManager {
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
         } catch {
-            downloadError = "WhisperKit: \(error.localizedDescription)"
+            downloadError = downloadErrorMessage(error, for: "Speech Recognition")
         }
     }
 
@@ -142,7 +179,7 @@ final class ModelDownloadManager {
             isLLMReady = true
             UserDefaults.standard.set(true, forKey: kLLMReadyKey)
         } catch {
-            downloadError = "LLM: \(error.localizedDescription)"
+            downloadError = downloadErrorMessage(error, for: "Blog Generator")
         }
     }
 
