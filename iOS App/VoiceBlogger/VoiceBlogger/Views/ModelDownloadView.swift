@@ -14,7 +14,7 @@ struct ModelDownloadView: View {
                     .foregroundStyle(.blue)
                 Text("Setting Up VoiceBlogger")
                     .font(.title2.bold())
-                Text("Downloading AI models (~1.5 GB total).\nThis happens once — the app works fully offline after.")
+                Text("Downloading AI models (~1.5 GB total).\nAn internet connection is required. After this one-time setup, the app works fully offline.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
