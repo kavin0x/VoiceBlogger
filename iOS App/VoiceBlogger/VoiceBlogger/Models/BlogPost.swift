@@ -14,6 +14,7 @@ final class BlogPost {
     var transcript: String
     var blogContent: String
     var instagramCaptions: String
+    var linkedinPost: String = ""
     var audioFilename: String?
     var createdAt: Date
     var duration: TimeInterval
@@ -24,6 +25,7 @@ final class BlogPost {
         transcript: String = "",
         blogContent: String = "",
         instagramCaptions: String = "",
+        linkedinPost: String = "",
         audioFilename: String? = nil,
         createdAt: Date = .now,
         duration: TimeInterval = 0,
@@ -34,6 +36,7 @@ final class BlogPost {
         self.transcript = transcript
         self.blogContent = blogContent
         self.instagramCaptions = instagramCaptions
+        self.linkedinPost = linkedinPost
         self.audioFilename = audioFilename
         self.createdAt = createdAt
         self.duration = duration
