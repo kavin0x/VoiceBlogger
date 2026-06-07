@@ -10,6 +10,7 @@ enum AppStage: Equatable {
     case generatingBlog(post: BlogPost)
     case viewingBlog(post: BlogPost)
     case viewingInstagram(post: BlogPost)
+    case viewingLinkedIn(post: BlogPost)
     case history
 
     static func == (lhs: AppStage, rhs: AppStage) -> Bool {
@@ -22,6 +23,7 @@ enum AppStage: Equatable {
         case (.generatingBlog(let a), .generatingBlog(let b)): return a.id == b.id
         case (.viewingBlog(let a), .viewingBlog(let b)): return a.id == b.id
         case (.viewingInstagram(let a), .viewingInstagram(let b)): return a.id == b.id
+        case (.viewingLinkedIn(let a), .viewingLinkedIn(let b)): return a.id == b.id
         default: return false
         }
     }
