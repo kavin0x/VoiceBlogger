@@ -117,13 +117,23 @@ struct BlogView: View {
 
                     if !displayText.isEmpty && !isGenerating {
                         Divider()
-                        Button {
-                            appState.navigateTo(.viewingInstagram(post: post))
-                        } label: {
-                            Label("Generate Instagram Captions", systemImage: "camera.fill")
-                                .frame(maxWidth: .infinity)
+                        HStack(spacing: 12) {
+                            Button {
+                                appState.navigateTo(.viewingInstagram(post: post))
+                            } label: {
+                                Label("Instagram", systemImage: "camera.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button {
+                                appState.navigateTo(.viewingLinkedIn(post: post))
+                            } label: {
+                                Label("LinkedIn", systemImage: "briefcase.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.borderedProminent)
                         .padding(.top, 8)
                     }
                 }
