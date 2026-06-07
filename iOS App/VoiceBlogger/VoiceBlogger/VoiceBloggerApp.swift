@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 
+/*
+ hi :)
+ */
 @main
 struct VoiceBloggerApp: App {
     @State private var appState = AppState()
@@ -11,9 +14,20 @@ struct VoiceBloggerApp: App {
         let schema = Schema([BlogPost.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            return try ModelContainer(for: schema, configurations: [config])
+            // Primary path: staged migration for stores that carry version metadata
+            // (any store created after this versioning was introduced).
+            return try ModelContainer(for: schema, migrationPlan: AppMigrationPlan.self, configurations: [config])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Fallback: the store predates versioning and has no version fingerprint,
+            // so staged migration can't identify the starting version. CoreData's
+            // automatic lightweight migration takes over instead — it infers the
+            // mapping from the stored model hash and fills new non-optional columns
+            // using their inline property defaults (e.g. linkedinPost = "").
+            do {
+                return try ModelContainer(for: schema, configurations: [config])
+            } catch let fallbackError {
+                fatalError("Could not create ModelContainer: \(fallbackError)")
+            }
         }
     }()
 
@@ -27,6 +41,12 @@ struct VoiceBloggerApp: App {
                     await downloadManager.warmWhisper()
                 }
         }
+
         .modelContainer(sharedModelContainer)
+
+        /*
+         bye :)
+         */
     }
+
 }
