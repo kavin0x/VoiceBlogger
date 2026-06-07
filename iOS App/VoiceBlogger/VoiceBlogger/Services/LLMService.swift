@@ -26,7 +26,7 @@ final class LLMService: Sendable {
 
     // Uses the mlx-swift-lm 3.x AsyncStream<Generation> API.
     // Each yielded value is a text chunk from the .chunk(String) generation event.
-    func generateStream(messages: [[String: String]], maxTokens: Int = 1024) -> AsyncThrowingStream<String, Error> {
+    func generateStream(messages: [[String: String]], maxTokens: Int = 64000) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { [container] in
                 do {
@@ -79,10 +79,14 @@ final class LLMService: Sendable {
     }
 
     func generateBlog(transcript: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(messages: PromptBuilder.blogMessages(transcript: transcript), maxTokens: 1024)
+        generateStream(messages: PromptBuilder.blogMessages(transcript: transcript), maxTokens: 2048)
     }
 
     func generateInstagramCaptions(blogContent: String) -> AsyncThrowingStream<String, Error> {
         generateStream(messages: PromptBuilder.instagramMessages(blogContent: blogContent), maxTokens: 450)
+    }
+
+    func generateLinkedInPost(blogContent: String) -> AsyncThrowingStream<String, Error> {
+        generateStream(messages: PromptBuilder.linkedinMessages(blogContent: blogContent), maxTokens: 550)
     }
 }
