@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @Environment(AppState.self) var appState
@@ -45,6 +46,9 @@ struct ContentView: View {
 
         case .viewingInstagram(let post):
             InstagramView(post: post)
+
+        case .viewingLinkedIn(let post):
+            LinkedInView(post: post)
 
         case .history:
             BlogListView()
