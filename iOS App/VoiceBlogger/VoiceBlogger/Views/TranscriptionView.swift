@@ -114,7 +114,7 @@ struct TranscriptionView: View {
                 let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
                 let finalText = try await service.transcribe(
                     audioURL: audioURL,
-                    mode: .translate,
+                    mode: .transcribe(language: nil),
                     onPartial: { partial in
                         Task { @MainActor in
                             post.transcript = partial

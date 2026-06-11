@@ -36,9 +36,11 @@ final class AudioRecorder: NSObject {
         }
         guard permissionGranted else { return }
 
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        try session.setActive(true)
+        try await Task.detached {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try session.setActive(true)
+        }.value
 
         let recordingsDir = URL.recordingsDirectory
         try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
@@ -70,7 +72,7 @@ final class AudioRecorder: NSObject {
         isRecording = false
         audioLevels = Array(repeating: -60, count: 30)
 
-        try? AVAudioSession.sharedInstance().setActive(false)
+        Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
         return currentAudioURL
     }
 
@@ -82,7 +84,7 @@ final class AudioRecorder: NSObject {
         currentAudioURL = nil
         duration = 0
         audioLevels = Array(repeating: -60, count: 30)
-        try? AVAudioSession.sharedInstance().setActive(false)
+        Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
     }
 
     private func startTimers() {

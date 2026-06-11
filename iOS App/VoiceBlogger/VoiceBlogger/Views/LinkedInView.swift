@@ -53,6 +53,7 @@ struct LinkedInView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
+                    .accessibilityLabel("Close")
                 }
             }
             .sheet(isPresented: $showShareSheet) {

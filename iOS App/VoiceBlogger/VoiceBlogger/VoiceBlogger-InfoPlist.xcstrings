@@ -10,6 +10,12 @@
             "state" : "new",
             "value" : "VoiceBlogger"
           }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "VoiceBlogger"
+          }
         }
       }
     },
@@ -21,6 +27,12 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Voice Blogger आपकी आवाज़ रिकॉर्ड करने और उसे ब्लॉग पोस्ट में बदलने के लिए माइक्रोफ़ोन का उपयोग करता है। आपका ऑडियो पूरी तरह से डिवाइस पर ही प्रोसेस होता है और आपके फ़ोन से बाहर नहीं जाता।"
           }
         }
       }

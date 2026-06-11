@@ -27,7 +27,7 @@ struct ContentView: View {
     private var stageView: some View {
         switch appState.stage {
         case .modelDownload:
-            RecordingView()
+            ModelDownloadView()
 
         case .recording:
             RecordingView()

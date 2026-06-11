@@ -109,6 +109,7 @@ struct BlogView: View {
                                 .font(.body)
                                 .frame(minHeight: 400)
                                 .scrollContentBackground(.hidden)
+                                .accessibilityLabel("Blog post content")
                         } else {
                             MarkdownView(text: displayText)
                                 .textSelection(.enabled)
@@ -184,6 +185,7 @@ struct BlogView: View {
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }
+                        .accessibilityLabel("More options")
  
                     }
                 }

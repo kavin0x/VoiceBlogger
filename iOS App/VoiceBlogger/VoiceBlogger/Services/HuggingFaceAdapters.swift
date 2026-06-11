@@ -12,12 +12,13 @@ struct HubDownloader: MLXLMCommon.Downloader {
         self.upstream = upstream
     }
 
-    // downloadSnapshot downloads up to 8 files concurrently; bump the per-host
-    // connection limit so all 8 can open TCP connections simultaneously instead
-    // of queuing behind the default limit of 6.
+    // downloadSnapshot downloads up to 8 files concurrently. Keep per-host connections
+    // at 4 — HuggingFace's CDN sends TCP RSTs when a single client opens more than ~6
+    // simultaneous connections, which corrupts in-flight shards.
     private static func makeClient() -> HuggingFace.HubClient {
         let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 16
+        config.httpMaximumConnectionsPerHost = 4
+        config.timeoutIntervalForRequest = 60
         return HubClient(session: URLSession(configuration: config))
     }
 

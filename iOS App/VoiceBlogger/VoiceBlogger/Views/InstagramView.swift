@@ -64,6 +64,7 @@ struct InstagramView: View {
                     } label: {
                         Image(systemName: "xmark")
                     }
+                    .accessibilityLabel("Close")
                 }
             }
             .sheet(isPresented: $showShareSheet) {

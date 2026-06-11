@@ -26,6 +26,7 @@ struct RecordingView: View {
                 .frame(height: 64)
                 .padding(.horizontal, 24)
                 .animation(.easeInOut(duration: 0.05), value: recorder.audioLevels)
+                .accessibilityHidden(true)
 
                 // Duration
                 if recorder.isRecording {
@@ -69,6 +70,7 @@ struct RecordingView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(recorder.isRecording ? "Stop recording" : "Start recording")
                 .scaleEffect(recorder.isRecording ? 1.05 : 1.0)
                 .animation(.spring(duration: 0.3), value: recorder.isRecording)
                 .disabled(recorder.permissionDenied)
@@ -104,6 +106,7 @@ struct RecordingView: View {
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                     }
+                    .accessibilityLabel("History")
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
@@ -120,6 +123,7 @@ struct RecordingView: View {
                     } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .confirmationDialog(

@@ -18,6 +18,7 @@ struct WaveformView: View {
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
+        .accessibilityHidden(true)
     }
 
     private func barHeight(level: Float, maxHeight: CGFloat) -> CGFloat {

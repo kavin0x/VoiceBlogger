@@ -43,6 +43,7 @@ struct OnboardingView: View {
                                 .animation(.spring(duration: 0.3), value: currentPage)
                         }
                     }
+                    .accessibilityHidden(true)
                     Spacer()
                     if currentPage < 4 {
                         Button("Next") {
@@ -87,6 +88,7 @@ private struct OnboardingWelcomePage: View {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 52))
                     .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
             }
 
             VStack(spacing: 12) {
@@ -143,6 +145,7 @@ private struct OnboardingRecordPage: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isRecording ? "Stop demo recording" : "Try recording")
                 .scaleEffect(isRecording ? 1.1 : 1.0)
                 .animation(.spring(duration: 0.35), value: isRecording)
 
@@ -185,6 +188,7 @@ private struct OnboardingBlogPage: View {
                     Image(systemName: "waveform")
                         .font(.system(size: 32))
                         .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
                     ForEach(0..<4, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 3)
                             .fill(.blue.opacity(0.25))
@@ -198,11 +202,13 @@ private struct OnboardingBlogPage: View {
                     .opacity(transformed ? 1 : 0)
                     .scaleEffect(transformed ? 1 : 0.5)
                     .animation(.spring(duration: 0.4).delay(0.1), value: transformed)
+                    .accessibilityHidden(true)
 
                 VStack(spacing: 8) {
                     Image(systemName: "doc.text.fill")
                         .font(.system(size: 32))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
                     ForEach(0..<4, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 3)
                             .fill(.green.opacity(transformed ? 0.4 : 0))
@@ -251,6 +257,7 @@ private struct OnboardingSupportPage: View {
             Image(systemName: "heart.fill")
                 .font(.system(size: 52))
                 .foregroundStyle(.pink)
+                .accessibilityHidden(true)
 
             VStack(spacing: 12) {
                 Text("Free & private, always")
@@ -302,6 +309,7 @@ private struct OnboardingReadyPage: View {
             Image(systemName: "lock.shield.fill")
                 .font(.system(size: 52))
                 .foregroundStyle(.blue)
+                .accessibilityHidden(true)
 
             VStack(spacing: 10) {
                 Text("Private by design")

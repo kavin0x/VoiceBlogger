@@ -12,6 +12,7 @@ struct ModelDownloadView: View {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.system(size: 56))
                     .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
                 Text("Setting Up VoiceBlogger")
                     .font(.title2.bold())
                 Text("Downloading AI models (~1.5 GB total).\nAn internet connection is required. After this one-time setup, the app works fully offline.")
@@ -94,6 +95,7 @@ private struct DownloadRowView: View {
                 .font(.title2)
                 .foregroundStyle(.blue)
                 .frame(width: 32)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -102,6 +104,7 @@ private struct DownloadRowView: View {
                     if isReady {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
+                            .accessibilityHidden(true)
                     } else {
                         Text("\(Int(progress * 100))%")
                             .font(.caption)
