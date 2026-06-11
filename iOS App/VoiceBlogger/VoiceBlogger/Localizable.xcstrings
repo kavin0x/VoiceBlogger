@@ -1,0 +1,271 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld%%" : {
+
+    },
+    "About" : {
+
+    },
+    "AI transcribes your speech and crafts it into a well-structured blog post, ready to share. " : {
+
+    },
+    "All models are ready" : {
+
+    },
+    "Back" : {
+
+    },
+    "Back to Transcript" : {
+
+    },
+    "Blog" : {
+
+    },
+    "Blog Post" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Caption %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Caption %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Continue" : {
+
+    },
+    "Copy" : {
+
+    },
+    "Done" : {
+
+    },
+    "Download failed" : {
+
+    },
+    "Download Models" : {
+
+    },
+    "Downloading AI models (~1.5 GB total).\nAn internet connection is required. After this one-time setup, the app works fully offline." : {
+
+    },
+    "Downloading AI models…" : {
+
+    },
+    "Downloading…" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Error" : {
+
+    },
+    "Every AI model runs on your device. Your voice and data never leave your phone." : {
+
+    },
+    "Free & private, always" : {
+
+    },
+    "Generate Blog Post" : {
+
+    },
+    "Generating blog post…" : {
+
+    },
+    "Generating captions…" : {
+
+    },
+    "Generating LinkedIn post…" : {
+
+    },
+    "Get Started" : {
+
+    },
+    "History" : {
+
+    },
+    "If you find it useful, the only way to support me is through GitHub Sponsors." : {
+
+    },
+    "IG" : {
+
+    },
+    "Incomplete" : {
+
+    },
+    "Instagram" : {
+
+    },
+    "Instagram Captions" : {
+
+    },
+    "Just speak your mind" : {
+
+    },
+    "License" : {
+
+    },
+    "LinkedIn" : {
+
+    },
+    "LinkedIn Post" : {
+
+    },
+    "Loading…" : {
+
+    },
+    "Made by" : {
+
+    },
+    "Microphone access is required to record." : {
+
+    },
+    "Microphone Access Required" : {
+
+    },
+    "New Recording" : {
+
+    },
+    "Next" : {
+
+    },
+    "No Blog Posts Yet" : {
+
+    },
+    "No data leaves your device. Free and Private, Forever." : {
+
+    },
+    "OK" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Preparing Blog Generator..." : {
+
+    },
+    "Private by design" : {
+
+    },
+    "Re-transcribe" : {
+
+    },
+    "Ready to go!" : {
+
+    },
+    "Record your voice and generate a blog post to see it here." : {
+
+    },
+    "Record yourself talking about anything — no scripts or editing needed. Even long recording... Just fine, just speak your mind!" : {
+
+    },
+    "Reset & Re-download" : {
+
+    },
+    "Reset & Re-download Models" : {
+
+    },
+    "Reset Models?" : {
+
+    },
+    "Retry" : {
+
+    },
+    "Setting Up VoiceBlogger" : {
+
+    },
+    "Setting up…" : {
+
+    },
+    "Share" : {
+
+    },
+    "Share Audio" : {
+
+    },
+    "Share Blog" : {
+
+    },
+    "Skip" : {
+
+    },
+    "Sponsor" : {
+
+    },
+    "Support on GitHub" : {
+
+    },
+    "Supports 90+ different languages!" : {
+
+    },
+    "Supports 90+ languages. Switch seamlessly, speak freely, and let it run as long as you need." : {
+
+    },
+    "Tap to record" : {
+
+    },
+    "Tap to stop" : {
+
+    },
+    "Tap to try it" : {
+
+    },
+    "This will delete all downloaded AI models and re-download them (~1.5 GB). Use this if a model fails to load." : {
+
+    },
+    "Transcribing… Please keep the app open!" : {
+
+    },
+    "Transcript" : {
+
+    },
+    "Transcription" : {
+
+    },
+    "Transcription was interrupted" : {
+
+    },
+    "Turn your voice into a polished blog post — in minutes." : {
+
+    },
+    "Untranscribed" : {
+
+    },
+    "Upload Recording" : {
+
+    },
+    "Version" : {
+
+    },
+    "View on GitHub" : {
+
+    },
+    "Voice Blogger" : {
+
+    },
+    "VoiceBlogger" : {
+
+    },
+    "VoiceBlogger is completely free to use and all AI runs on your device — your data never leaves your phone, ever." : {
+
+    },
+    "VoiceBlogger needs microphone access to record audio. Please enable it in Settings." : {
+
+    },
+    "You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here." : {
+
+    },
+    "Your words, beautifully written" : {
+
+    }
+  },
+  "version" : "1.3"
+}
