@@ -12,13 +12,24 @@ struct HubDownloader: MLXLMCommon.Downloader {
         self.upstream = upstream
     }
 
-    // downloadSnapshot downloads up to 8 files concurrently. Keep per-host connections
-    // at 4 — HuggingFace's CDN sends TCP RSTs when a single client opens more than ~6
-    // simultaneous connections, which corrupts in-flight shards.
     private static func makeClient() -> HuggingFace.HubClient {
         let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 4
-        config.timeoutIntervalForRequest = 60
+        // Max connections per host — HF's CDN is multi-host (CDN redirects), so iOS enforces
+        // this per resolved IP. Push to 16 to saturate available bandwidth across shards.
+        config.httpMaximumConnectionsPerHost = 16
+        // Per-packet idle timeout — large shards can stall 60-120s between TCP retries on
+        // a flaky link before the next chunk arrives. 300s prevents spurious -1001 kills.
+        config.timeoutIntervalForRequest = 300
+        // No wall-clock cap on total download duration.
+        config.timeoutIntervalForResource = .infinity
+        // Disable local disk cache — model files are already persisted by HubClient's own
+        // cache; URLCache just wastes memory and slows the pipeline.
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        // Allow downloads over cellular as well as Wi-Fi.
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.allowsConstrainedNetworkAccess = true
         return HubClient(session: URLSession(configuration: config))
     }
 
@@ -32,10 +43,13 @@ struct HubDownloader: MLXLMCommon.Downloader {
         guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
             throw HubDownloaderError.invalidRepositoryID(id)
         }
+        // 16 concurrent file downloads — matches httpMaximumConnectionsPerHost so every
+        // slot is in use simultaneously.
         return try await upstream.downloadSnapshot(
             of: repoID,
             revision: revision ?? "main",
             matching: patterns,
+            maxConcurrentDownloads: 16,
             progressHandler: { @MainActor progress in progressHandler(progress) }
         )
     }

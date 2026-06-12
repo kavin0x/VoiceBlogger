@@ -3,10 +3,10 @@ import Foundation
 enum PromptBuilder {
     private static let instagramSummaryCharacterLimit = 1800
     private static let linkedinSummaryCharacterLimit = 2200
-    // Gemma 4 2B has an 8192-token context window. With ~300 tokens for the prompt
-    // template and 2048 reserved for output, the transcript budget is ~5850 tokens.
+    // Qwen3.5 2B has a 32768-token context window. With ~300 tokens for the prompt
+    // template and 2048 reserved for output, the transcript budget is well within budget.
     // At ~4 chars/token for English, 20 000 chars ≈ 5000 tokens — safely within budget.
-    private static let maxTranscriptCharacters = 20_000
+    private static let maxTranscriptCharacters = 20_0000
 
     static func blogMessages(transcript: String) -> [[String: String]] {
         let system = """
@@ -21,6 +21,9 @@ enum PromptBuilder {
         3. Do NOT add new information, opinions, or change the meaning
         4. Do NOT make it longer than necessary — preserve the original voice
         5. Keep cultural references, names, and places exactly as they are
+        6. DO NOT ADD WORDS!!!!!
+        7. You can add markdown for headers.
+        8. Detect if the user is taking meeting notes vs a blog vs a todo list and adjust.
         """
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))

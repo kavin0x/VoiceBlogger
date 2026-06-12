@@ -36,12 +36,6 @@ final class AudioRecorder: NSObject {
         }
         guard permissionGranted else { return }
 
-        try await Task.detached {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true)
-        }.value
-
         let recordingsDir = URL.recordingsDirectory
         try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
         let tempURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".m4a")
@@ -53,11 +47,27 @@ final class AudioRecorder: NSObject {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
-        recorder = try AVAudioRecorder(url: tempURL, settings: settings)
-        recorder?.delegate = self
-        recorder?.isMeteringEnabled = true
-        recorder?.record()
+        let newRecorder = try AVAudioRecorder(url: tempURL, settings: settings)
+        newRecorder.delegate = self
+        newRecorder.isMeteringEnabled = true
 
+        // Activate audio session on a global background queue so the synchronous
+        // setCategory/setActive calls never block the main thread.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                    try session.setActive(true)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        newRecorder.record()
+
+        recorder = newRecorder
         currentAudioURL = tempURL
         isRecording = true
         recordingStartTime = .now

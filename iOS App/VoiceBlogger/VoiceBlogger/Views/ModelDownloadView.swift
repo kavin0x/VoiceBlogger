@@ -105,8 +105,12 @@ private struct DownloadRowView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .accessibilityHidden(true)
+                    } else if progress >= 0.95 {
+                        Text("Loading model…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     } else {
-                        Text("\(Int(progress * 100))%")
+                        Text(progress.formatted(.percent.precision(.fractionLength(0))))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

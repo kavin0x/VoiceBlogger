@@ -352,7 +352,7 @@ private struct OnboardingReadyPage: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text("\(Int(overallProgress * 100))%")
+                            Text(overallProgress.formatted(.percent.precision(.fractionLength(0))))
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }

@@ -24,6 +24,16 @@ final class LLMService: Sendable {
         return LLMService(container: c)
     }
 
+    // Load from a directory that was already downloaded (e.g. by a prefetch task).
+    // Skips network I/O — goes straight to weight deserialization.
+    static func makeFromDirectory(_ directory: URL) async throws -> LLMService {
+        let c = try await LLMModelFactory.shared.loadContainer(
+            from: directory,
+            using: HuggingFaceTokenizerLoader()
+        )
+        return LLMService(container: c)
+    }
+
     // Uses the mlx-swift-lm 3.x AsyncStream<Generation> API.
     // Each yielded value is a text chunk from the .chunk(String) generation event.
     func generateStream(messages: [[String: String]], maxTokens: Int = 64000) -> AsyncThrowingStream<String, Error> {

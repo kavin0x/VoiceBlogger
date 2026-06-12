@@ -11,6 +11,18 @@
             "value" : "VoiceBlogger"
           }
         },
+        "es" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "VoiceBlogger"
+          }
+        },
+        "gu" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "VoiceBlogger"
+          }
+        },
         "hi" : {
           "stringUnit" : {
             "state" : "machine_translated",
@@ -27,6 +39,18 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Voice Blogger usa el micrófono para grabar tu voz y convertirla en entradas de blog. Tu audio se procesa completamente en el dispositivo y nunca sale de tu teléfono."
+          }
+        },
+        "gu" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Voice Blogger તમારી વાણી રેકોર્ડ કરવા અને તેને બ્લૉગ પોસ્ટ્સમાં ફેરવવા માટે માઇક્રોફોનનો ઉપયોગ કરે છે. તમારો ઑડિઓ સંપૂર્ણ રીતે ડિવાઇસ પર જ પ્રોસેસ થાય છે અને ક્યારેય તમારા ફોનની બહાર જતો નથી."
           }
         },
         "hi" : {

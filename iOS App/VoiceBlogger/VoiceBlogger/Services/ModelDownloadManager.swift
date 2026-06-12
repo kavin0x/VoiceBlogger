@@ -6,11 +6,11 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 
-let kLLMModelID = "mlx-community/gemma-4-e2b-it-4bit"
+let kLLMModelID = "mlx-community/Qwen3.5-2B-MLX-4bit"
 let kWhisperModelID = "openai_whisper-medium"
 
 private let kWhisperReadyKey = "whisperModelReady_v4"
-private let kLLMReadyKey = "llmModelReady_v1"
+private let kLLMReadyKey = "llmModelReady_v3"
 
 @MainActor
 @Observable
@@ -56,17 +56,16 @@ final class ModelDownloadManager {
 
         // Guard: if model files were deleted (e.g. simulator sandbox reset) but UserDefaults
         // still says ready, reset the flag so we don't pass a null path into WhisperKit's C++ layer.
-        // WhisperKit stores models at {documents}/models/argmaxinc/whisperkit-coreml/{modelID}/,
-        // which is separate from the HuggingFace hub cache used by the LLM.
+        // WhisperKit uses HubApiWrapper which defaults to {documents}/huggingface/ as the download
+        // base, so models land at {documents}/huggingface/models/argmaxinc/whisperkit-coreml/{modelID}/.
         let fm = FileManager.default
         if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
             let whisperModelDir = docs
-                .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
+                .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
                 .appendingPathComponent(kWhisperModelID)
             if !fm.fileExists(atPath: whisperModelDir.path(percentEncoded: false)) {
                 isWhisperReady = false
                 UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
-                return
             }
             let hfDir = docs.appendingPathComponent("huggingface")
             if !fm.fileExists(atPath: hfDir.path(percentEncoded: false)) {
@@ -74,6 +73,7 @@ final class ModelDownloadManager {
                 UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
             }
         }
+        guard isWhisperReady else { return }
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -101,13 +101,40 @@ final class ModelDownloadManager {
         isDownloading = true
         downloadError = nil
 
-        // Sequential — loading both models concurrently peaks at ~1.5 GB and kills the process.
-        if !isWhisperReady { await downloadWhisper() }
-        if downloadError == nil, !isLLMReady {
-            // downloadWhisper() leaves WhisperKit loaded in memory (~800 MB). Release it before
-            // loading the LLM (~700 MB) — holding both would exceed 1.5 GB and kill the process.
-            await prepareForLLMGenerationBarrier()
-            await downloadLLM()
+        if !isWhisperReady {
+            // Prefetch LLM files to disk concurrently with the whisper download.
+            // resolve() is pure network→disk: it holds zero RAM, so running it alongside
+            // whisper is safe. Only the subsequent _load() step (loadContainer(from:directory))
+            // pulls weights into memory, and that is deferred until after whisper unloads.
+            let prefetchTask = Task.detached(priority: .utility) { [weak self] in
+                return try? await resolve(
+                    configuration: ModelConfiguration(id: kLLMModelID),
+                    from: HubDownloader(),
+                    useLatest: false,
+                    progressHandler: { [weak self] progress in
+                        Task { @MainActor [weak self] in
+                            guard let self, !self.isLLMReady else { return }
+                            let real = max(0.05, min(progress.fractionCompleted, 0.95))
+                            if real > self.llmProgress {
+                                self.llmProgress = real
+                            }
+                        }
+                    }
+                )
+            }
+            await downloadWhisper()
+
+            if downloadError == nil {
+                // Release whisper from RAM before loading the LLM — holding both
+                // (~1.5 GB total) kills the process.
+                await prepareForLLMGenerationBarrier()
+                let prefetchedDir = await prefetchTask.value
+                await downloadLLM(prefetchedDirectory: prefetchedDir?.modelDirectory)
+            } else {
+                prefetchTask.cancel()
+            }
+        } else if !isLLMReady {
+            await downloadLLM(prefetchedDirectory: nil)
         }
 
         isDownloading = false
@@ -167,13 +194,15 @@ final class ModelDownloadManager {
             )
             // Phase 1: download model files (~80% of total time). No callback available here,
             // so animate progress smoothly to 0.45 while we wait.
+            // ~0.002/tick at 1s → 0.45 over ~4 min for ~800 MB Whisper model on slow connections.
             let progressTask = Task { @MainActor [weak self] in
-                var p = 0.05
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    guard let self, !self.isWhisperReady else { return }
-                    p = min(p + 0.02, 0.45)
-                    self.whisperProgress = p
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self, !self.isWhisperReady, !Task.isCancelled else { return }
+                    let next = min(self.whisperProgress + 0.002, 0.45)
+                    if next > self.whisperProgress {
+                        self.whisperProgress = next
+                    }
                 }
             }
             defer { progressTask.cancel() }
@@ -206,7 +235,7 @@ final class ModelDownloadManager {
         }
     }
 
-    private func downloadLLM() async {
+    private func downloadLLM(prefetchedDirectory: URL?) async {
         // MLX's Metal device constructor calls device.name.UTF8String in C++, which returns
         // nullptr on the iOS 27 simulator, crashing the hardened libc++ string constructor.
         // MLX requires real GPU hardware and is not supported on simulator.
@@ -214,15 +243,44 @@ final class ModelDownloadManager {
         downloadError = "The AI Blog Generator requires a physical iPhone or iPad — the iOS Simulator is not supported."
         #else
         do {
-            // Extract progress handler so the download task doesn't implicitly capture self.
+            // If prefetchedDirectory is set, files are already on disk — skip straight to loading.
+            // Otherwise download + load in one pass (the original path, used when whisper was
+            // already ready on launch so no prefetch task was started).
             let progressHandler: @Sendable (Foundation.Progress) -> Void = { [weak self] progress in
                 Task { @MainActor [weak self] in
-                    self?.llmProgress = max(0.05, progress.fractionCompleted)
+                    guard let self else { return }
+                    // Cap at 0.95: loadContainer has two phases — download (reported here) and
+                    // weight deserialization (silent). Allowing 1.0 here causes the bar to show
+                    // 100% for several seconds while the device finishes loading, with no green.
+                    // The bar snaps to 1.0 + green only when isLLMReady flips true.
+                    let real = max(0.05, min(progress.fractionCompleted, 0.95))
+                    if real > self.llmProgress {
+                        self.llmProgress = real
+                    }
                 }
             }
+
+            // Animation keeps the bar creeping during the silent weight-deserialization phase.
+            // Caps at 0.97 so the final snap to 1.0 comes only from isLLMReady flipping.
+            let animTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self, !self.isLLMReady, !Task.isCancelled else { return }
+                    let next = min(self.llmProgress + 0.004, 0.97)
+                    if next > self.llmProgress {
+                        self.llmProgress = next
+                    }
+                }
+            }
+
             let service: LLMService = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                 group.addTask {
-                    return try await LLMService.make(progressHandler: progressHandler)
+                    if let dir = prefetchedDirectory {
+                        // Files already on disk — load directly, no download needed.
+                        return try await LLMService.makeFromDirectory(dir)
+                    } else {
+                        return try await LLMService.make(progressHandler: progressHandler)
+                    }
                 }
                 // Watchdog: throw URLError.timedOut if progress hasn't advanced for 90 seconds.
                 group.addTask { [weak self] in
@@ -248,6 +306,7 @@ final class ModelDownloadManager {
                 }
                 throw URLError(.timedOut)
             }
+            animTask.cancel()
             llmService = service
             mlxWasInitializedThisSession = true
             llmProgress = 1.0

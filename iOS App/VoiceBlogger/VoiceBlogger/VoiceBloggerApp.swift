@@ -9,6 +9,7 @@ struct VoiceBloggerApp: App {
     @State private var appState = AppState()
     @State private var audioRecorder = AudioRecorder()
     @State private var downloadManager = ModelDownloadManager()
+    @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([BlogPost.self])
@@ -39,6 +40,9 @@ struct VoiceBloggerApp: App {
                 .environment(downloadManager)
                 .task {
                     await downloadManager.warmWhisper()
+                    if onboardingComplete && !downloadManager.allModelsReady {
+                        appState.navigateTo(.modelDownload)
+                    }
                 }
         }
 
