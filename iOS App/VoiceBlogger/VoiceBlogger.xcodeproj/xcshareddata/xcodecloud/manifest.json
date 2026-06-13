@@ -1,0 +1,9 @@
+{
+  "id" : "d28944f1-2096-4915-afc5-fde06370f58a",
+  "targets" : [
+    {
+      "id" : "9d250511-cb04-4baa-b1bf-dd7e00de109c",
+      "name" : "VoiceBlogger"
+    }
+  ]
+}
