@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import MLX
 
 struct TranscriptionView: View {
     let post: BlogPost
@@ -121,11 +120,12 @@ struct TranscriptionView: View {
                         }
                     }
                 )
-                // Free WhisperKit memory before LLM generation to prevent OOM.
+                // Free WhisperKit memory before any later LLM generation to prevent OOM.
                 await service.cleanup()
                 downloadManager.whisperKit = nil
-                MLX.Memory.clearCache()
-                Task { await downloadManager.warmWhisper() }
+                Task {
+                    await downloadManager.warmWhisper()
+                }
                 post.transcript = finalText
                 post.transcriptionState = .complete
                 try? modelContext.save()
@@ -149,7 +149,9 @@ struct TranscriptionView: View {
         post.transcript = transcript
         post.transcriptionState = .complete
         try? modelContext.save()
-        downloadManager.prepareForLLMGeneration(releaseLLM: true)
-        appState.navigateTo(.preparingBlog(postID: post.id))
+        Task {
+            await downloadManager.prepareForLLMGeneration(releaseLLM: true)
+            appState.navigateTo(.preparingBlog(postID: post.id))
+        }
     }
 }

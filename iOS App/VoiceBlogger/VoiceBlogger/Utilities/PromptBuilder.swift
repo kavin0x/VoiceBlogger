@@ -3,10 +3,11 @@ import Foundation
 enum PromptBuilder {
     private static let instagramSummaryCharacterLimit = 1800
     private static let linkedinSummaryCharacterLimit = 2200
-    // Qwen3.5 2B has a 32768-token context window. With ~300 tokens for the prompt
+    // Qwen3.5 2B has a 256k-token context window. With ~300 tokens for the prompt
     // template and 2048 reserved for output, the transcript budget is well within budget.
-    // At ~4 chars/token for English, 20 000 chars ≈ 5000 tokens — safely within budget.
-    private static let maxTranscriptCharacters = 20_0000
+    // Keep prefill memory bounded on iPhone. Long transcripts can otherwise allocate a large
+    // KV cache before generation even starts.
+    private static let maxTranscriptCharacters = 8_000
 
     static func blogMessages(transcript: String) -> [[String: String]] {
         let system = """
@@ -24,6 +25,7 @@ enum PromptBuilder {
         6. DO NOT ADD WORDS!!!!!
         7. You can add markdown for headers.
         8. Detect if the user is taking meeting notes vs a blog vs a todo list and adjust.
+        9. Be sure to use all features of markdown, such as "---" and "#" 
         """
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))

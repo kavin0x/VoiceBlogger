@@ -113,9 +113,6 @@ struct RecordingView: View {
                         Button("About", systemImage: "info.circle") {
                             showAbout = true
                         }
-                        Link(destination: URL(string: "https://github.com/sponsors/kavin0x")!) {
-                            Label("Sponsor", systemImage: "heart")
-                        }
                         Divider()
                         Button("Reset & Re-download Models", systemImage: "arrow.trianglehead.2.clockwise", role: .destructive) {
                             showResetConfirm = true

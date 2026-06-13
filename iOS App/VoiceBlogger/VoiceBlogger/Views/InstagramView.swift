@@ -127,14 +127,14 @@ struct InstagramView: View {
 
         do {
             // LLM is already loaded from blog generation; just clear whisperKit residual.
-            downloadManager.prepareForLLMGeneration()
+            await downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
             var fullText = ""
             for try await chunk in service.generateInstagramCaptions(blogContent: blogContent) {
                 if Task.isCancelled { return }
-                streamedText += chunk
                 fullText += chunk
             }
+            streamedText = fullText
             guard !fullText.isEmpty else { return }
             post.instagramCaptions = fullText
             savePostContext()

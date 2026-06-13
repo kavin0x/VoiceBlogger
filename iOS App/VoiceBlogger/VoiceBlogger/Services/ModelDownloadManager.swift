@@ -52,7 +52,7 @@ final class ModelDownloadManager {
         // as holding both in memory simultaneously (~1.5 GB) exceeds the device budget.
         // Require llmService == nil: if the LLM is already loaded (e.g. right after initial
         // download), defer whisper warm until the LLM is released to avoid the same OOM.
-        guard allModelsReady, llmService == nil, whisperKit == nil, whisperWarmTask == nil else { return }
+        guard allModelsReady, llmService == nil, llmLoadTask == nil, whisperKit == nil, whisperWarmTask == nil else { return }
 
         // Guard: if model files were deleted (e.g. simulator sandbox reset) but UserDefaults
         // still says ready, reset the flag so we don't pass a null path into WhisperKit's C++ layer.
@@ -84,16 +84,22 @@ final class ModelDownloadManager {
                     textDecoderCompute: .cpuAndGPU
                 )
             )
-            guard let kit = try? await WhisperKit(config) else { return }
+            guard !Task.isCancelled, let kit = try? await WhisperKit(config) else { return }
+            guard !Task.isCancelled else { return }
             try? await kit.loadModels()
+            guard !Task.isCancelled else {
+                await kit.unloadModels()
+                return
+            }
             await MainActor.run { [weak self] in
-                guard let self, self.whisperKit == nil else { return }
+                guard let self, self.whisperKit == nil, self.llmService == nil, self.llmLoadTask == nil else { return }
                 self.whisperKit = kit
                 self.whisperWarmTask = nil
             }
         }
         whisperWarmTask = task
         await task.value
+        whisperWarmTask = nil
     }
 
     func downloadAll() async {
@@ -322,7 +328,11 @@ final class ModelDownloadManager {
         try await loadLLMService()
     }
 
-    func prepareForLLMGeneration(releaseLLM: Bool = false) {
+    func prepareForLLMGeneration(releaseLLM: Bool = false) async {
+        await cancelWhisperWarmTask()
+        if let whisperKit {
+            await whisperKit.unloadModels()
+        }
         whisperKit = nil
         if releaseLLM {
             releaseLLMService()
@@ -332,8 +342,15 @@ final class ModelDownloadManager {
         }
     }
 
+    private func cancelWhisperWarmTask() async {
+        guard let task = whisperWarmTask else { return }
+        task.cancel()
+        whisperWarmTask = nil
+        await task.value
+    }
+
     func prepareForLLMGenerationBarrier(releaseLLM: Bool = false) async {
-        prepareForLLMGeneration(releaseLLM: releaseLLM)
+        await prepareForLLMGeneration(releaseLLM: releaseLLM)
         await Task.yield()
         try? await Task.sleep(for: .milliseconds(750))
         if mlxWasInitializedThisSession {
@@ -361,8 +378,15 @@ final class ModelDownloadManager {
             return try await llmLoadTask.value
         }
 
-        let task = Task {
-            try await LLMService.make(progressHandler: progressHandler)
+        let task = Task { [isLLMReady] in
+            // When the model is already on disk, load from the local cache directory
+            // without any network calls. HubDownloader.download always hits the HF API
+            // to resolve "main" → commit hash (a network request), which blocks for up
+            // to timeoutIntervalForRequest before falling back to the local cache.
+            if isLLMReady, let localDir = LLMService.localModelDirectory() {
+                return try await LLMService.makeFromDirectory(localDir)
+            }
+            return try await LLMService.make(progressHandler: progressHandler)
         }
         llmLoadTask = task
 

@@ -65,9 +65,11 @@ struct BlogGenerationPrepView: View {
 
         post.transcript = transcript
         post.transcriptionState = .complete
+        // Clear any previously generated content so BlogView always runs a fresh generation.
+        post.blogContent = ""
+        post.title = ""
         try? modelContext.save()
 
-        downloadManager.releaseLLMService()
         await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: true)
 
         // A crash/reopen discards transient model state and uses a freshly fetched

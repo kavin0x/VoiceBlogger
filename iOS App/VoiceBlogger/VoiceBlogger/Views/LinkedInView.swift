@@ -117,14 +117,14 @@ struct LinkedInView: View {
         defer { isGenerating = false }
 
         do {
-            downloadManager.prepareForLLMGeneration()
+            await downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
             var fullText = ""
             for try await chunk in service.generateLinkedInPost(blogContent: blogContent) {
                 if Task.isCancelled { return }
-                streamedText += chunk
                 fullText += chunk
             }
+            streamedText = fullText
             guard !fullText.isEmpty else { return }
             post.linkedinPost = fullText
             savePostContext()

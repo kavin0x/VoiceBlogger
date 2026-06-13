@@ -14,19 +14,17 @@ struct OnboardingView: View {
                     .tag(1)
                 OnboardingBlogPage()
                     .tag(2)
-                OnboardingSupportPage()
-                    .tag(3)
                 OnboardingReadyPage { onboardingComplete = true }
-                    .tag(4)
+                    .tag(3)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             VStack {
                 HStack {
                     Spacer()
-                    if currentPage < 4 {
+                    if currentPage < 3 {
                         Button("Skip") {
-                            withAnimation { currentPage = 4 }
+                            withAnimation { currentPage = 3 }
                         }
                         .foregroundStyle(.secondary)
                         .padding(.top, 56)
@@ -36,7 +34,7 @@ struct OnboardingView: View {
                 Spacer()
                 HStack {
                     HStack(spacing: 6) {
-                        ForEach(0..<5, id: \.self) { i in
+                        ForEach(0..<4, id: \.self) { i in
                             Capsule()
                                 .fill(i == currentPage ? Color.primary : Color.secondary.opacity(0.3))
                                 .frame(width: i == currentPage ? 20 : 8, height: 8)
@@ -45,7 +43,7 @@ struct OnboardingView: View {
                     }
                     .accessibilityHidden(true)
                     Spacer()
-                    if currentPage < 4 {
+                    if currentPage < 3 {
                         Button("Next") {
                             withAnimation { currentPage += 1 }
                         }
@@ -247,52 +245,7 @@ private struct OnboardingBlogPage: View {
     }
 }
 
-// MARK: - Page 4: Support
-
-private struct OnboardingSupportPage: View {
-    var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            Image(systemName: "heart.fill")
-                .font(.system(size: 52))
-                .foregroundStyle(.pink)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 12) {
-                Text("Free & private, always")
-                    .font(.title2.bold())
-                Text("VoiceBlogger is completely free to use and all AI runs on your device — your data never leaves your phone, ever.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-            }
-
-            VStack(spacing: 8) {
-                Text("If you find it useful, the only way to support me is through GitHub Sponsors.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-
-                Link(destination: URL(string: "https://github.com/sponsors/kavin0x")!) {
-                    Label("Support on GitHub", systemImage: "heart")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(.pink.opacity(0.12), in: Capsule())
-                        .foregroundStyle(.pink)
-                }
-            }
-
-            Spacer()
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Page 5: Privacy + download ready
+// MARK: - Page 4: Privacy + download ready
 
 private struct OnboardingReadyPage: View {
     @Environment(ModelDownloadManager.self) var downloadManager
