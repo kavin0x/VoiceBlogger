@@ -9,6 +9,7 @@ struct TranscriptionView: View {
 
     @State private var isTranscribing = false
     @State private var error: String?
+    @State private var editableTranscript = ""
 
     var body: some View {
         NavigationStack {
@@ -43,15 +44,28 @@ struct TranscriptionView: View {
                     }
                 }
 
-                if !post.transcript.isEmpty {
+                if !post.transcript.isEmpty || !editableTranscript.isEmpty {
                     Section("Transcript") {
-                        ScrollView {
-                            Text(post.transcript)
+                        if isTranscribing {
+                            ScrollView {
+                                Text(post.transcript)
+                                    .font(.body)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxHeight: 300)
+                        } else {
+                            TextEditor(text: $editableTranscript)
                                 .font(.body)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(minHeight: 240)
+                                .accessibilityLabel("Editable transcript")
+
+                            if editableTranscript != post.transcript {
+                                Button("Save Transcript") {
+                                    saveEditedTranscript()
+                                }
+                            }
                         }
-                        .frame(maxHeight: 300)
                     }
 
                     if !isTranscribing {
@@ -64,7 +78,7 @@ struct TranscriptionView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
                             .buttonStyle(.borderedProminent)
                             .disabled(!BlogGenerationHandoff.canGenerateBlog(
-                                from: post.transcript,
+                                from: editableTranscript,
                                 isBusy: false
                             ))
                         }
@@ -85,10 +99,19 @@ struct TranscriptionView: View {
                         (post.transcriptionState != .untranscribed || !post.transcript.isEmpty) {
                         Button("Re-transcribe") {
                             post.transcript = ""
+                            editableTranscript = ""
                             post.transcriptionState = .untranscribed
                             runTranscription()
                         }
                     }
+                }
+            }
+            .onAppear {
+                editableTranscript = post.transcript
+            }
+            .onDisappear {
+                if !isTranscribing {
+                    saveEditedTranscript()
                 }
             }
             .task {
@@ -117,6 +140,7 @@ struct TranscriptionView: View {
                     onPartial: { partial in
                         Task { @MainActor in
                             post.transcript = partial
+                            editableTranscript = partial
                         }
                     }
                 )
@@ -127,6 +151,7 @@ struct TranscriptionView: View {
                     await downloadManager.warmWhisper()
                 }
                 post.transcript = finalText
+                editableTranscript = finalText
                 post.transcriptionState = .complete
                 try? modelContext.save()
             } catch {
@@ -137,21 +162,24 @@ struct TranscriptionView: View {
         }
     }
 
+    private func saveEditedTranscript() {
+        let transcript = BlogGenerationHandoff.preparedTranscript(from: editableTranscript)
+        guard transcript != post.transcript else { return }
+        editableTranscript = transcript
+        post.transcript = transcript
+        post.transcriptionState = transcript.isEmpty ? .untranscribed : .complete
+        try? modelContext.save()
+    }
+
     private func generateBlog() {
         guard BlogGenerationHandoff.canGenerateBlog(
-            from: post.transcript,
+            from: editableTranscript,
             isBusy: false
         ) else {
             return
         }
 
-        let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
-        post.transcript = transcript
-        post.transcriptionState = .complete
-        try? modelContext.save()
-        Task {
-            await downloadManager.prepareForLLMGeneration(releaseLLM: true)
-            appState.navigateTo(.preparingBlog(postID: post.id))
-        }
+        saveEditedTranscript()
+        appState.navigateTo(.preparingBlog(postID: post.id))
     }
 }

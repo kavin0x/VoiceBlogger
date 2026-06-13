@@ -75,14 +75,20 @@ final class LLMService: Sendable {
     func generateStream(messages: [[String: String]], maxTokens: Int = 2048) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let cancellationBox = GenerationCancellationBox()
-            let task = Task { [container] in
+            let task = Task.detached(priority: .userInitiated) { [container] in
                 do {
+                    await Task.yield()
                     try await container.perform { context in
                         let input = try await context.processor.prepare(
                             input: UserInput(messages: messages, additionalContext: ["enable_thinking": false])
                         )
                         var params = GenerateParameters()
-                        params.temperature = 0.7
+                        params.temperature = 0.45
+                        params.topP = 0.9
+                        params.repetitionPenalty = 1.15
+                        params.repetitionContextSize = 96
+                        params.frequencyPenalty = 0.05
+                        params.frequencyContextSize = 128
                         params.maxTokens = maxTokens
 
                         MLX.Memory.clearCache()

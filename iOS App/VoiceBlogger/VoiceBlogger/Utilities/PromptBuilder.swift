@@ -11,28 +11,20 @@ enum PromptBuilder {
 
     static func blogMessages(transcript: String) -> [[String: String]] {
         let system = """
-        You are a professional blog writer. Convert spoken transcripts into polished, \
-        engaging blog posts. Write in first person. Use clear headings, short paragraphs, \
-        and a conversational yet professional tone. Do not include a meta-commentary about \
-        the transcript — just write the blog post directly. \
-        Try to not modify the original transcription. Do not add things that the user did not say originally.
-        Your job:
-        1. Fix minor grammar, punctuation, and flow issues
-        2. Format it as a clean, readable blog post with a title and paragraphs
-        3. Do NOT add new information, opinions, or change the meaning
-        4. Do NOT make it longer than necessary — preserve the original voice
-        5. Keep cultural references, names, and places exactly as they are
-        6. DO NOT ADD WORDS!!!!!
-        7. You can add markdown for headers.
-        8. Detect if the user is taking meeting notes vs a blog vs a todo list and adjust.
-        9. Be sure to use all features of markdown, such as "---" and "#" 
+        You convert voice transcripts into clean written notes or blog posts.
+        Preserve the speaker's meaning, facts, names, cultural references, and point of view.
+        Fix grammar, punctuation, filler words, and paragraph flow without adding new claims.
+        If the transcript is short, keep the output short. If it is longer, organize it with clear sections.
+        Use simple markdown only: one title, optional section headings, paragraphs, and lists when useful.
+        Do not use tables unless the transcript clearly contains tabular data.
+        Do not include commentary about the transcript or your process.
+        Stop after the final paragraph; do not repeat sections or restart the post.
         """
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))
             : transcript
         let user = """
-        Please convert the following voice transcript into a well-structured blog post. \
-        Include a compelling title, introduction, main body with subheadings, and a conclusion.
+        Rewrite this voice transcript into a readable post or note. Keep the content proportional to the transcript length.
 
         Transcript:
         \(safeTranscript)

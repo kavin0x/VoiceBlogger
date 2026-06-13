@@ -92,6 +92,25 @@ struct VoiceBloggerTests {
         #expect(blocks[8] == .divider)
     }
 
+    @Test func generationOutputGuardStopsObviousRunawayText() {
+        let repeated = Array(repeating: "This paragraph is repeating without adding anything new.", count: 4)
+            .joined(separator: "\n")
+
+        #expect(GenerationOutputGuard.hasRunawayRepetition(in: repeated))
+    }
+
+    @Test func generationOutputGuardAllowsNormalRepeatedPhrasing() {
+        let post = """
+        # Weekly Notes
+
+        The product launch came up several times because it mattered to every part of the plan.
+        The team discussed launch readiness, customer support, and follow-up tasks.
+        The product launch also shaped the marketing timeline, but each section added new detail.
+        """
+
+        #expect(!GenerationOutputGuard.hasRunawayRepetition(in: post))
+    }
+
     @Test func markdownProcessorParsesSetextAndIndentedCode() {
         let markdown = """
         Setext Title

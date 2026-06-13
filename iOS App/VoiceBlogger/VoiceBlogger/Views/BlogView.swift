@@ -8,6 +8,7 @@ struct BlogView: View {
     @Environment(AppState.self) var appState
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var streamedText = ""
     @State private var isGenerating = false
@@ -18,6 +19,7 @@ struct BlogView: View {
     @State private var didComplete = false
     @State private var isEditing = false
     @State private var editableText = ""
+    @State private var generationTask: Task<Void, Never>?
 
     var displayText: String { streamedText.isEmpty ? post.blogContent : streamedText }
     var shareText: String { isEditing ? editableText : displayText }
@@ -49,7 +51,7 @@ struct BlogView: View {
                                 .frame(minHeight: 400)
                                 .scrollContentBackground(.hidden)
                                 .accessibilityLabel("Blog post content")
-                        } else if isGenerating {
+                        } else if isGenerating || generationError != nil {
                             Text(displayText)
                                 .font(.body)
                                 .textSelection(.enabled)
@@ -156,15 +158,42 @@ struct BlogView: View {
             .sheet(isPresented: $showTranscriptShareSheet) {
                 ShareSheet(items: [post.transcript])
             }
-            .task {
-                await generateIfNeeded()
+            .onAppear {
+                startGenerationTask()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase != .active {
+                    cancelGenerationForBackground()
+                }
             }
             .onDisappear {
-                guard !isGenerating else { return }
+                cancelGenerationTask()
                 downloadManager.releaseLLMService()
                 Task { await downloadManager.warmWhisper() }
             }
         }
+    }
+
+    private func startGenerationTask() {
+        guard generationTask == nil else { return }
+        generationTask = Task {
+            await generateIfNeeded()
+            generationTask = nil
+        }
+    }
+
+    private func cancelGenerationTask() {
+        generationTask?.cancel()
+        generationTask = nil
+        if isGenerating {
+            downloadManager.releaseLLMService()
+        }
+    }
+
+    private func cancelGenerationForBackground() {
+        guard isGenerating else { return }
+        cancelGenerationTask()
+        generationError = "Generation stopped because the app left the foreground. Regenerate the post to try again."
     }
 
     private func commitEdits() {
@@ -185,7 +214,7 @@ struct BlogView: View {
         streamedText = ""
         didComplete = false
         savePostContext()
-        Task { await generateIfNeeded() }
+        startGenerationTask()
     }
 
     private func generateIfNeeded() async {
@@ -207,12 +236,13 @@ struct BlogView: View {
             let availMB = os_proc_available_memory() / (1024 * 1024)
             os_log("BlogView: available memory before LLM load = %lu MB", type: .info, availMB)
             let service = try await downloadManager.loadedLLMService()
+            let outputGuard = GenerationOutputGuard(maxCharacters: 18_000)
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
             for try await chunk in service.generateBlog(transcript: transcript) {
                 if Task.isCancelled { return }
-                fullText += chunk
+                fullText = try outputGuard.appending(chunk, to: fullText)
                 pendingDisplayCharacterCount += chunk.count
 
                 if pendingDisplayCharacterCount >= 80 || Date().timeIntervalSince(lastDisplayUpdate) >= 0.12 {

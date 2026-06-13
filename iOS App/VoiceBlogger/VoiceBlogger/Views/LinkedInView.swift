@@ -6,12 +6,14 @@ struct LinkedInView: View {
     @Environment(AppState.self) var appState
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var streamedText = ""
     @State private var isGenerating = false
     @State private var generationError: String?
     @State private var showShareSheet = false
     @State private var didComplete = false
+    @State private var generationTask: Task<Void, Never>?
 
     private var postContent: String {
         streamedText.isEmpty ? post.linkedinPost : streamedText
@@ -59,8 +61,40 @@ struct LinkedInView: View {
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(items: [postContent])
             }
-            .task { await generateIfNeeded() }
+            .onAppear {
+                startGenerationTask()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase != .active {
+                    cancelGenerationForBackground()
+                }
+            }
+            .onDisappear {
+                cancelGenerationTask()
+            }
         }
+    }
+
+    private func startGenerationTask() {
+        guard generationTask == nil else { return }
+        generationTask = Task {
+            await generateIfNeeded()
+            generationTask = nil
+        }
+    }
+
+    private func cancelGenerationTask() {
+        generationTask?.cancel()
+        generationTask = nil
+        if isGenerating {
+            downloadManager.releaseLLMService()
+        }
+    }
+
+    private func cancelGenerationForBackground() {
+        guard isGenerating else { return }
+        cancelGenerationTask()
+        generationError = "Generation stopped because the app left the foreground. Try again when the app is active."
     }
 
     private var postCardView: some View {
@@ -119,10 +153,11 @@ struct LinkedInView: View {
         do {
             await downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
+            let outputGuard = GenerationOutputGuard(maxCharacters: 5_000)
             var fullText = ""
             for try await chunk in service.generateLinkedInPost(blogContent: blogContent) {
                 if Task.isCancelled { return }
-                fullText += chunk
+                fullText = try outputGuard.appending(chunk, to: fullText)
             }
             streamedText = fullText
             guard !fullText.isEmpty else { return }

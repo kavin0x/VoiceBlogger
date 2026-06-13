@@ -6,6 +6,7 @@ struct InstagramView: View {
     @Environment(AppState.self) var appState
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var streamedText = ""
     @State private var isGenerating = false
@@ -14,6 +15,7 @@ struct InstagramView: View {
     @State private var showShareSheet = false
     @State private var shareText = ""
     @State private var didComplete = false
+    @State private var generationTask: Task<Void, Never>?
 
     private var captions: [String] {
         let source = streamedText.isEmpty ? post.instagramCaptions : streamedText
@@ -70,8 +72,40 @@ struct InstagramView: View {
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(items: [shareText])
             }
-            .task { await generateIfNeeded() }
+            .onAppear {
+                startGenerationTask()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase != .active {
+                    cancelGenerationForBackground()
+                }
+            }
+            .onDisappear {
+                cancelGenerationTask()
+            }
         }
+    }
+
+    private func startGenerationTask() {
+        guard generationTask == nil else { return }
+        generationTask = Task {
+            await generateIfNeeded()
+            generationTask = nil
+        }
+    }
+
+    private func cancelGenerationTask() {
+        generationTask?.cancel()
+        generationTask = nil
+        if isGenerating {
+            downloadManager.releaseLLMService()
+        }
+    }
+
+    private func cancelGenerationForBackground() {
+        guard isGenerating else { return }
+        cancelGenerationTask()
+        generationError = "Generation stopped because the app left the foreground. Try again when the app is active."
     }
 
     private var captionPager: some View {
@@ -129,10 +163,11 @@ struct InstagramView: View {
             // LLM is already loaded from blog generation; just clear whisperKit residual.
             await downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
+            let outputGuard = GenerationOutputGuard(maxCharacters: 6_000)
             var fullText = ""
             for try await chunk in service.generateInstagramCaptions(blogContent: blogContent) {
                 if Task.isCancelled { return }
-                fullText += chunk
+                fullText = try outputGuard.appending(chunk, to: fullText)
             }
             streamedText = fullText
             guard !fullText.isEmpty else { return }
