@@ -11,8 +11,8 @@ Available on **Apple Silicon (M-series Mac)** and as a native **iOS app**. The t
 ## How it works
 
 1. **Transcribe** — `mlx-whisper` (Whisper large-v3) converts your audio to text. Pass `--task translate` to get English output from any language, or `--task transcribe` to keep the original language.
-2. **Polish** — an Ollama LLM cleans up grammar and formats the transcript as a readable blog post.
-3. **Instagram captions** — the same model generates 3–5 ready-to-post captions with hashtags.
+2. **Polish** — a local LLM cleans up grammar and formats the transcript as a readable blog post.
+3. **Instagram captions** — the same model generates 3 ready-to-post captions with hashtags.
 
 All three outputs are saved as files next to your audio.
 
@@ -76,7 +76,7 @@ python Transcribe_and_blog.py <audio_file> [options]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--language` | `hi` | Source language ([ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code, e.g. `en`, `hi`, `es`, `fr`) |
+| `--language` | `en` | Source language ([ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code, e.g. `en`, `hi`, `es`, `fr`) |
 | `--task` | `translate` | `translate` → English output; `transcribe` → keeps source language |
 | `--model` | `gemma4:e4b` | Ollama model name (run `ollama list` to see what you have) |
 | `--no-instagram` | off | Skip Instagram caption generation |
