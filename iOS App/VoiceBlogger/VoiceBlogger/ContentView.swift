@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-
 struct ContentView: View {
     @Environment(AppState.self) var appState
     @AppStorage("onboardingComplete") private var onboardingComplete = false
