@@ -91,8 +91,6 @@ final class LLMService: Sendable {
                         params.frequencyContextSize = 128
                         params.maxTokens = maxTokens
 
-                        MLX.Memory.clearCache()
-
                         let iterator = try TokenIterator(
                             input: input,
                             model: context.model,

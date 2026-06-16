@@ -1,5 +1,10 @@
 import SwiftUI
 
+// Sizes verified from HuggingFace model repositories (argmaxinc/whisperkit-coreml, mlx-community)
+private let kWhisperDownloadSize = "~1.5 GB"
+private let kLLMDownloadSize = "~1.7 GB"
+private let kTotalDownloadSize = "~3.2 GB"
+
 struct ModelDownloadView: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(AppState.self) var appState
@@ -15,7 +20,7 @@ struct ModelDownloadView: View {
                     .accessibilityHidden(true)
                 Text("Setting Up VoiceBlogger")
                     .font(.title2.bold())
-                Text("Downloading AI models (~1.5 GB total).\nAn internet connection is required. After this one-time setup, the app works fully offline.")
+                Text("AI models are required for speech recognition and blog generation. This one-time download requires an internet connection; after that, the app works fully offline.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -25,14 +30,14 @@ struct ModelDownloadView: View {
                 DownloadRowView(
                     icon: "waveform",
                     title: "Advanced Speech Recognition",
-                    subtitle: "~800 MB (Supports up to 90+ languages)",
+                    subtitle: "Supports 90+ languages · \(kWhisperDownloadSize)",
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
                 DownloadRowView(
                     icon: "text.bubble.fill",
                     title: "Blog Generator",
-                    subtitle: "~700 MB",
+                    subtitle: kLLMDownloadSize,
                     progress: downloadManager.llmProgress,
                     isReady: downloadManager.isLLMReady
                 )
@@ -63,22 +68,23 @@ struct ModelDownloadView: View {
                 }
             } else if downloadManager.isDownloading {
                 ProgressView("Downloading…")
-            } else if !downloadManager.allModelsReady {
-                Button("Download Models") {
-                    Task { await downloadManager.downloadAll() }
+            } else {
+                VStack(spacing: 8) {
+                    Text("Total download: \(kTotalDownloadSize) · Wi-Fi recommended")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Download AI Models") {
+                        Task { await downloadManager.downloadAll() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
             }
 
             Spacer()
         }
         .padding()
-        .onAppear {
-            if !downloadManager.allModelsReady && !downloadManager.isDownloading {
-                Task { await downloadManager.downloadAll() }
-            }
-        }
+        .frame(maxWidth: 560)
     }
 }
 

@@ -39,6 +39,7 @@ struct BlogGenerationPrepView: View {
                 }
             }
             .padding()
+            .frame(maxWidth: 480)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Blog Post")
             .navigationBarTitleDisplayMode(.inline)
@@ -70,10 +71,11 @@ struct BlogGenerationPrepView: View {
         post.title = ""
         try? modelContext.save()
 
-        await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: true)
+        // releaseLLM: false — keep the LLM resident if it's already loaded so BlogView
+        // can start generating immediately instead of reloading from disk (~15–20 s).
+        // Whisper is still unloaded by prepareForLLMGeneration to reclaim CoreML memory.
+        await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
 
-        // A crash/reopen discards transient model state and uses a freshly fetched
-        // SwiftData object. Do the same here, then let BlogView load the LLM cleanly.
         appState.navigateTo(.generatingBlog(post: post))
     }
 

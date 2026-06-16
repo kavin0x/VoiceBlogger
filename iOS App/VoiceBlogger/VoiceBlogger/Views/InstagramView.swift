@@ -52,6 +52,7 @@ struct InstagramView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .frame(maxWidth: 640)
             .navigationTitle("Instagram Captions")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -41,6 +41,7 @@ struct LinkedInView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .frame(maxWidth: 640)
             .navigationTitle("LinkedIn Post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

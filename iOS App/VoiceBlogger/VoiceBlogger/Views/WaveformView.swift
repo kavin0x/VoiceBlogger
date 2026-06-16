@@ -5,28 +5,31 @@ struct WaveformView: View {
     var color: Color = .blue
 
     var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .center, spacing: 3) {
-                ForEach(0..<levels.count, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color)
-                        .frame(
-                            width: max(2, (geo.size.width - CGFloat(levels.count - 1) * 3) / CGFloat(levels.count)),
-                            height: barHeight(level: levels[i], maxHeight: geo.size.height)
-                        )
-                }
+        // Canvas draws a single Core Graphics pass instead of 30 individual SwiftUI
+        // shape views — avoids the GeometryReader layout overhead and per-bar view
+        // allocation that previously ran 20× per second during recording.
+        Canvas { context, size in
+            let count = levels.count
+            guard count > 0 else { return }
+            let spacing: CGFloat = 3
+            let totalSpacing = spacing * CGFloat(count - 1)
+            let barWidth = max(2, (size.width - totalSpacing) / CGFloat(count))
+            let minHeight: CGFloat = 4
+
+            for i in 0..<count {
+                let clamped = Double(max(-60, min(0, levels[i])))
+                let normalized = CGFloat((clamped + 60.0) / 60.0)
+                let barHeight = minHeight + normalized * (size.height - minHeight)
+                let x = CGFloat(i) * (barWidth + spacing)
+                let y = (size.height - barHeight) / 2
+                let path = Path(
+                    roundedRect: CGRect(x: x, y: y, width: barWidth, height: barHeight),
+                    cornerRadius: 2
+                )
+                context.fill(path, with: .color(color))
             }
-            .frame(maxHeight: .infinity, alignment: .center)
         }
         .accessibilityHidden(true)
-    }
-
-    private func barHeight(level: Float, maxHeight: CGFloat) -> CGFloat {
-        // level is in dBFS: -60 (silence) to 0 (full scale)
-        let clamped = max(-60, min(0, level))
-        let normalized = CGFloat((clamped + 60) / 60)  // 0…1
-        let minHeight: CGFloat = 4
-        return minHeight + normalized * (maxHeight - minHeight)
     }
 }
 

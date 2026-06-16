@@ -89,7 +89,7 @@ private struct BlogPostRowView: View {
                 }
             }
             if !post.transcript.isEmpty {
-                Text(post.transcript)
+                Text(String(post.transcript.prefix(200)))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

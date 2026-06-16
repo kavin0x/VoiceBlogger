@@ -28,6 +28,12 @@
             "state" : "machine_translated",
             "value" : "VoiceBlogger"
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VoiceBlogger"
+          }
         }
       }
     },
@@ -57,6 +63,12 @@
           "stringUnit" : {
             "state" : "machine_translated",
             "value" : "Voice Blogger आपकी आवाज़ रिकॉर्ड करने और उसे ब्लॉग पोस्ट में बदलने के लिए माइक्रोफ़ोन का उपयोग करता है। आपका ऑडियो पूरी तरह से डिवाइस पर ही प्रोसेस होता है और आपके फ़ोन से बाहर नहीं जाता।"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice Blogger 利用麦克风录制您的语音，并将其转化为博客文章。您的音频完全在设备本地处理，绝不会离开您的手机。"
           }
         }
       }

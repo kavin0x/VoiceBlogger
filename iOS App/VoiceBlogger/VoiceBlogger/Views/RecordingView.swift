@@ -25,7 +25,6 @@ struct RecordingView: View {
                 )
                 .frame(height: 64)
                 .padding(.horizontal, 24)
-                .animation(.easeInOut(duration: 0.05), value: recorder.audioLevels)
                 .accessibilityHidden(true)
 
                 // Duration
@@ -97,6 +96,7 @@ struct RecordingView: View {
 
                 Spacer()
             }
+            .frame(maxWidth: 560)
             .navigationTitle("Voice Blogger")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -134,7 +134,7 @@ struct RecordingView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will delete all downloaded AI models and re-download them (~1.5 GB). Use this if a model fails to load.")
+                Text("This will delete all downloaded AI models and re-download them (~3.2 GB). Use this if a model fails to load.")
             }
             .fileImporter(
                 isPresented: $showFilePicker,

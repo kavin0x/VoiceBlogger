@@ -54,11 +54,6 @@ struct OnboardingView: View {
                 .padding(.bottom, 52)
             }
         }
-        .task {
-            if !downloadManager.allModelsReady && !downloadManager.isDownloading {
-                await downloadManager.downloadAll()
-            }
-        }
     }
 }
 
@@ -112,6 +107,7 @@ private struct OnboardingWelcomePage: View {
             Spacer()
             Spacer()
         }
+        .frame(maxWidth: 600)
         .onAppear { appeared = true }
     }
 }
@@ -165,6 +161,7 @@ private struct OnboardingRecordPage: View {
             Spacer()
             Spacer()
         }
+        .frame(maxWidth: 600)
     }
 }
 
@@ -236,6 +233,7 @@ private struct OnboardingBlogPage: View {
             Spacer()
             Spacer()
         }
+        .frame(maxWidth: 600)
         .onAppear {
             Task {
                 try? await Task.sleep(for: .milliseconds(400))
@@ -245,11 +243,13 @@ private struct OnboardingBlogPage: View {
     }
 }
 
-// MARK: - Page 4: Privacy + download ready
+// MARK: - Page 4: Privacy + download
 
 private struct OnboardingReadyPage: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     let onComplete: () -> Void
+
+    @State private var downloadStarted = false
 
     private var overallProgress: Double {
         (downloadManager.whisperProgress + downloadManager.llmProgress) / 2.0
@@ -274,7 +274,6 @@ private struct OnboardingReadyPage: View {
                     .padding(.horizontal, 44)
             }
 
-            // Compact download status
             Group {
                 if downloadManager.allModelsReady {
                     Label("Ready to go!", systemImage: "checkmark.circle.fill")
@@ -292,13 +291,14 @@ private struct OnboardingReadyPage: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                         Button("Retry") {
+                            downloadStarted = true
                             Task { await downloadManager.downloadAll() }
                         }
                         .foregroundStyle(.blue)
                         .font(.subheadline)
                     }
                     .transition(.opacity)
-                } else {
+                } else if downloadStarted || downloadManager.isDownloading {
                     VStack(spacing: 6) {
                         HStack {
                             Text("Downloading AI models…")
@@ -314,19 +314,81 @@ private struct OnboardingReadyPage: View {
                     }
                     .padding(.horizontal, 40)
                     .transition(.opacity)
+                } else {
+                    // Pre-download: disclose sizes before the user commits
+                    VStack(spacing: 6) {
+                        HStack {
+                            Label("Speech Recognition", systemImage: "waveform")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("~1.5 GB")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Label("Blog Generator", systemImage: "text.bubble.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("~1.7 GB")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Divider()
+                        HStack {
+                            Text("Total")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("~3.2 GB")
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(12)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 40)
+                    .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.4), value: downloadManager.allModelsReady)
             .animation(.easeInOut(duration: 0.4), value: downloadManager.downloadError != nil)
+            .animation(.easeInOut(duration: 0.4), value: downloadStarted)
 
-            Button(downloadManager.allModelsReady ? "Get Started" : "Setting up…") {
-                onComplete()
+            if downloadManager.allModelsReady {
+                Button("Get Started") {
+                    onComplete()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            } else if !downloadStarted && !downloadManager.isDownloading {
+                VStack(spacing: 6) {
+                    Button("Download AI Models (~3.2 GB)") {
+                        downloadStarted = true
+                        Task { await downloadManager.downloadAll() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    Text("Wi-Fi recommended. Download happens once.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            } else {
+                Button("Setting up…") {}
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(true)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!downloadManager.allModelsReady)
 
             Spacer()
+        }
+        .frame(maxWidth: 560)
+        .onAppear {
+            // If a download is already in progress when this page appears, reflect that in state
+            if downloadManager.isDownloading {
+                downloadStarted = true
+            }
         }
     }
 }

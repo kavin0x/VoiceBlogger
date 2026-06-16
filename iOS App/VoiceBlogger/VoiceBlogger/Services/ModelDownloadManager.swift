@@ -278,41 +278,48 @@ final class ModelDownloadManager {
                     }
                 }
             }
+            defer { animTask.cancel() }
 
-            let service: LLMService = try await withThrowingTaskGroup(of: LLMService?.self) { group in
-                group.addTask {
-                    if let dir = prefetchedDirectory {
-                        // Files already on disk — load directly, no download needed.
-                        return try await LLMService.makeFromDirectory(dir)
-                    } else {
+            let service: LLMService
+            if let dir = prefetchedDirectory {
+                // Files already on disk — skip straight to weight deserialization.
+                // No network I/O means no download stall is possible; skip the watchdog
+                // so the loading phase can take as long as the device needs.
+                service = try await LLMService.makeFromDirectory(dir)
+            } else {
+                service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
+                    group.addTask {
                         return try await LLMService.make(progressHandler: progressHandler)
                     }
-                }
-                // Watchdog: throw URLError.timedOut if progress hasn't advanced for 90 seconds.
-                group.addTask { [weak self] in
-                    var lastSeen: Double = -1
-                    var stalledSeconds: TimeInterval = 0
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(15))
-                        guard !Task.isCancelled else { return nil }
-                        let weakSelf = self
-                        let current: Double = await MainActor.run { weakSelf?.llmProgress ?? 0 }
-                        if current > lastSeen {
-                            lastSeen = current
-                            stalledSeconds = 0
-                        } else {
-                            stalledSeconds += 15
-                            if stalledSeconds >= 90 { throw URLError(.timedOut) }
+                    // Watchdog: throw URLError.timedOut if download progress hasn't advanced
+                    // for 90 seconds. Exits once progress reaches 0.95 (download complete,
+                    // loading phase begun) so the silent weight-deserialization phase is not
+                    // subject to a stall timeout.
+                    group.addTask { [weak self] in
+                        var lastSeen: Double = -1
+                        var stalledSeconds: TimeInterval = 0
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .seconds(15))
+                            guard !Task.isCancelled else { return nil }
+                            let weakSelf = self
+                            let current: Double = await MainActor.run { weakSelf?.llmProgress ?? 0 }
+                            if current >= 0.95 { return nil }
+                            if current > lastSeen {
+                                lastSeen = current
+                                stalledSeconds = 0
+                            } else {
+                                stalledSeconds += 15
+                                if stalledSeconds >= 90 { throw URLError(.timedOut) }
+                            }
                         }
+                        return nil
                     }
-                    return nil
+                    for try await result in group {
+                        if let service = result { return service }
+                    }
+                    throw URLError(.timedOut)
                 }
-                for try await result in group {
-                    if let service = result { return service }
-                }
-                throw URLError(.timedOut)
             }
-            animTask.cancel()
             llmService = service
             mlxWasInitializedThisSession = true
             llmProgress = 1.0

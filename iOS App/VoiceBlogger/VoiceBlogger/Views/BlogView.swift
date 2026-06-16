@@ -84,6 +84,8 @@ struct BlogView: View {
                     }
                 }
                 .padding()
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
             .navigationTitle(post.title.isEmpty ? "Blog Post" : post.title)
             .navigationBarTitleDisplayMode(.large)
