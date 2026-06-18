@@ -1,5 +1,8 @@
 import Foundation
 
+// Compiled once; accessed from nonisolated contexts so must not be actor-isolated.
+private nonisolated(unsafe) let _whitespaceRegex: NSRegularExpression = try! NSRegularExpression(pattern: #"\s+"#)
+
 struct GenerationOutputGuard {
     enum Failure: LocalizedError, Equatable {
         case repetitiveOutput
@@ -62,16 +65,16 @@ struct GenerationOutputGuard {
     }
 
     nonisolated private static func normalizedInlineSuffix(from text: String) -> String {
-        String(text.suffix(2_400))
-            .lowercased()
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let suffix = String(text.suffix(2_400)).lowercased()
+        let range = NSRange(suffix.startIndex..., in: suffix)
+        return _whitespaceRegex.stringByReplacingMatches(in: suffix, range: range, withTemplate: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     nonisolated private static func normalizedParagraph(_ paragraph: String) -> String {
-        paragraph
-            .lowercased()
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let lower = paragraph.lowercased()
+        let range = NSRange(lower.startIndex..., in: lower)
+        return _whitespaceRegex.stringByReplacingMatches(in: lower, range: range, withTemplate: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -80,14 +83,14 @@ struct GenerationOutputGuard {
 
         let end = characters.count
         let patternStart = end - unitLength
-        let pattern = Array(characters[patternStart..<end])
+        let pattern = characters[patternStart..<end]
         var repetitions = 1
         var cursor = patternStart
 
         while cursor >= unitLength {
             let previousStart = cursor - unitLength
-            let previous = Array(characters[previousStart..<cursor])
-            guard previous == pattern else { break }
+            // elementsEqual on ArraySlice avoids allocating a new Array per iteration.
+            guard characters[previousStart..<cursor].elementsEqual(pattern) else { break }
             repetitions += 1
             cursor = previousStart
         }

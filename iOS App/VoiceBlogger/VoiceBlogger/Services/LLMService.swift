@@ -10,6 +10,8 @@ private final class GenerationCancellationBox: @unchecked Sendable {
     nonisolated(unsafe) private var cancelHandler: (() -> Void)?
     nonisolated(unsafe) private var didCancel = false
 
+    nonisolated init() {}
+
     nonisolated func setCancelHandler(_ handler: @escaping () -> Void) {
         lock.lock()
         if didCancel {
@@ -72,7 +74,8 @@ final class LLMService: Sendable {
 
     // Uses the mlx-swift-lm 3.x AsyncStream<Generation> API.
     // Each yielded value is a text chunk from the .chunk(String) generation event.
-    func generateStream(messages: [[String: String]], maxTokens: Int = 2048) -> AsyncThrowingStream<String, Error> {
+    // nonisolated so this can be called from Task.detached contexts (e.g. generateBlogChunked).
+    nonisolated func generateStream(messages: [[String: String]], maxTokens: Int = 2048) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let cancellationBox = GenerationCancellationBox()
             let task = Task.detached(priority: .userInitiated) { [container] in
@@ -145,15 +148,76 @@ final class LLMService: Sendable {
         }
     }
 
-    func generateBlog(transcript: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(messages: PromptBuilder.blogMessages(transcript: transcript), maxTokens: 1800)
+    // Collects an entire generateStream call into a single String (no streaming to caller).
+    // Used for intermediate chunk-summary passes in the chunked blog generation path.
+    nonisolated private func collectStream(messages: [[String: String]], maxTokens: Int) async throws -> String {
+        var result = ""
+        for try await token in generateStream(messages: messages, maxTokens: maxTokens) {
+            try Task.checkCancellation()
+            result += token
+        }
+        return result
+    }
+
+    // Multi-pass path: summarise each chunk then synthesise into a blog post.
+    // onPhaseChange is called with a human-readable status string at each stage so the UI
+    // can show progress (e.g. "Analyzing part 2 of 4…").
+    private func generateBlogChunked(
+        transcript: String,
+        onPhaseChange: (@Sendable (String) -> Void)?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task.detached(priority: .userInitiated) { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                do {
+                    let chunks = PromptBuilder.splitIntoChunks(transcript)
+                    var summaries: [String] = []
+
+                    for (index, chunk) in chunks.enumerated() {
+                        try Task.checkCancellation()
+                        onPhaseChange?("Analyzing part \(index + 1) of \(chunks.count)…")
+                        let messages = PromptBuilder.chunkSummaryMessages(for: chunk, index: index, of: chunks.count)
+                        let summary = try await self.collectStream(messages: messages, maxTokens: 400)
+                        summaries.append(summary)
+                    }
+
+                    try Task.checkCancellation()
+                    onPhaseChange?("Writing blog post…")
+
+                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries)
+                    for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800) {
+                        try Task.checkCancellation()
+                        if case .terminated = continuation.yield(token) { break }
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func generateBlog(
+        transcript: String,
+        onPhaseChange: (@Sendable (String) -> Void)? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        if PromptBuilder.needsChunking(transcript) {
+            return generateBlogChunked(transcript: transcript, onPhaseChange: onPhaseChange)
+        }
+        return generateStream(messages: PromptBuilder.blogMessages(transcript: transcript), maxTokens: 1800)
     }
 
     func generateInstagramCaptions(blogContent: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(messages: PromptBuilder.instagramMessages(blogContent: blogContent), maxTokens: 450)
+        generateStream(messages: PromptBuilder.instagramMessages(blogContent: blogContent), maxTokens: 350)
     }
 
     func generateLinkedInPost(blogContent: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(messages: PromptBuilder.linkedinMessages(blogContent: blogContent), maxTokens: 550)
+        generateStream(messages: PromptBuilder.linkedinMessages(blogContent: blogContent), maxTokens: 400)
     }
 }

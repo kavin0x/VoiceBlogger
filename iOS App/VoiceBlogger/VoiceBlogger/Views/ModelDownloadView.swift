@@ -2,8 +2,8 @@ import SwiftUI
 
 // Sizes verified from HuggingFace model repositories (argmaxinc/whisperkit-coreml, mlx-community)
 private let kWhisperDownloadSize = "~1.5 GB"
-private let kLLMDownloadSize = "~1.7 GB"
-private let kTotalDownloadSize = "~3.2 GB"
+private let kLLMDownloadSize = "~1.0 GB"
+private let kTotalDownloadSize = "~2.5 GB"
 
 struct ModelDownloadView: View {
     @Environment(ModelDownloadManager.self) var downloadManager

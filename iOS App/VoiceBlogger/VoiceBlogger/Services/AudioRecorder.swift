@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Observation
+import UIKit
 
 @MainActor
 @Observable
@@ -16,12 +17,20 @@ final class AudioRecorder: NSObject {
     private var levelTimer: Timer?
     private var durationTimer: Timer?
     private var recordingStartTime: Date?
+    // Tracks an interrupted recording that hasn't been claimed by the caller
+    private var hasUnclaimedInterruptedRecording = false
+    @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
         super.init()
         let status = AVAudioApplication.shared.recordPermission
         permissionGranted = status == .granted
         permissionDenied = status == .denied
+        setupNotifications()
+    }
+
+    deinit {
+        notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     func requestPermission() async {
@@ -35,6 +44,13 @@ final class AudioRecorder: NSObject {
             await requestPermission()
         }
         guard permissionGranted else { return }
+
+        // Discard any leftover file from an interrupted recording
+        if hasUnclaimedInterruptedRecording, let old = currentAudioURL {
+            try? FileManager.default.removeItem(at: old)
+            currentAudioURL = nil
+            hasUnclaimedInterruptedRecording = false
+        }
 
         let recordingsDir = URL.recordingsDirectory
         try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
@@ -57,7 +73,7 @@ final class AudioRecorder: NSObject {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                    try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
                     try session.setActive(true)
                     continuation.resume()
                 } catch {
@@ -80,10 +96,12 @@ final class AudioRecorder: NSObject {
         stopTimers()
         recorder?.stop()
         isRecording = false
+        hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
-
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
-        return currentAudioURL
+        let url = currentAudioURL
+        currentAudioURL = nil
+        return url
     }
 
     func discardRecording() {
@@ -93,14 +111,68 @@ final class AudioRecorder: NSObject {
         isRecording = false
         currentAudioURL = nil
         duration = 0
+        hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
     }
 
-    private func startTimers() {
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateLevels() }
+    private func setupNotifications() {
+        // Handle phone calls, Siri, and other audio session interruptions
+        let interruptionObs = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated { self?.handleInterruption(notification) }
         }
+
+        // Stop the level meter when going to background — waveform isn't visible
+        let backgroundObs = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopLevelTimer() }
+        }
+
+        // Restart the level meter when returning to foreground
+        let foregroundObs = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isRecording else { return }
+                self.startLevelTimer()
+            }
+        }
+
+        notificationObservers = [interruptionObs, backgroundObs, foregroundObs]
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            guard isRecording else { return }
+            stopTimers()
+            recorder?.stop()
+            isRecording = false
+            // Mark the partial file as unclaimed so it can be cleaned up on next startRecording()
+            hasUnclaimedInterruptedRecording = currentAudioURL != nil
+            audioLevels = Array(repeating: -60, count: 30)
+        case .ended:
+            // Don't auto-resume; let the user explicitly start a new recording
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    private func startTimers() {
+        startLevelTimer()
         durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let start = self?.recordingStartTime else { return }
@@ -110,19 +182,30 @@ final class AudioRecorder: NSObject {
     }
 
     private func stopTimers() {
-        levelTimer?.invalidate()
-        levelTimer = nil
+        stopLevelTimer()
         durationTimer?.invalidate()
         durationTimer = nil
+    }
+
+    private func startLevelTimer() {
+        levelTimer?.invalidate()
+        // 15 Hz is indistinguishable from 20 Hz visually but saves ~25% of main-thread
+        // timer callbacks and battery during long recordings.
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateLevels() }
+        }
+    }
+
+    private func stopLevelTimer() {
+        levelTimer?.invalidate()
+        levelTimer = nil
     }
 
     private func updateLevels() {
         recorder?.updateMeters()
         let level = recorder?.averagePower(forChannel: 0) ?? -60
-        var updated = audioLevels
-        updated.removeFirst()
-        updated.append(level)
-        audioLevels = updated
+        audioLevels.removeFirst()
+        audioLevels.append(level)
     }
 }
 
@@ -131,6 +214,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
         if !flag {
             Task { @MainActor in
                 self.currentAudioURL = nil
+                self.hasUnclaimedInterruptedRecording = false
             }
         }
     }

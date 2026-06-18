@@ -44,9 +44,22 @@
 		8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8A0311CA2FE3A78B00497723 /* Exceptions for "VoiceBlogger" folder in "VoiceBlogger" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8AD556482FCBAA01001151C1 /* VoiceBlogger */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8AD5564B2FCBAA01001151C1 /* VoiceBlogger */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8A0311CA2FE3A78B00497723 /* Exceptions for "VoiceBlogger" folder in "VoiceBlogger" target */,
+			);
 			path = VoiceBlogger;
 			sourceTree = "<group>";
 		};
@@ -463,6 +476,7 @@
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoiceBlogger/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -474,7 +488,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -502,6 +516,7 @@
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoiceBlogger/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -513,7 +528,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

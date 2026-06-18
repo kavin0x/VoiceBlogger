@@ -12,6 +12,7 @@ struct BlogView: View {
 
     @State private var streamedText = ""
     @State private var isGenerating = false
+    @State private var generationPhase = "Generating blog post…"
     @State private var generationError: String?
     @State private var showShareSheet = false
     @State private var showAudioShareSheet = false
@@ -31,7 +32,7 @@ struct BlogView: View {
                     if isGenerating {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Generating blog post…")
+                            Text(generationPhase)
                                 .foregroundStyle(.secondary)
                                 .font(.subheadline)
                         }
@@ -215,6 +216,7 @@ struct BlogView: View {
         post.title = ""
         streamedText = ""
         didComplete = false
+        generationPhase = "Generating blog post…"
         savePostContext()
         startGenerationTask()
     }
@@ -229,6 +231,7 @@ struct BlogView: View {
 
         isGenerating = true
         generationError = nil
+        generationPhase = "Generating blog post…"
         defer { isGenerating = false }
 
         do {
@@ -242,7 +245,9 @@ struct BlogView: View {
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
-            for try await chunk in service.generateBlog(transcript: transcript) {
+            for try await chunk in service.generateBlog(transcript: transcript, onPhaseChange: { phase in
+                Task { @MainActor in generationPhase = phase }
+            }) {
                 if Task.isCancelled { return }
                 fullText = try outputGuard.appending(chunk, to: fullText)
                 pendingDisplayCharacterCount += chunk.count

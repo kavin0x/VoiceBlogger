@@ -11,18 +11,13 @@ struct InstagramView: View {
     @State private var streamedText = ""
     @State private var isGenerating = false
     @State private var generationError: String?
-    @State private var selectedCardIndex = 0
     @State private var showShareSheet = false
-    @State private var shareText = ""
     @State private var didComplete = false
     @State private var generationTask: Task<Void, Never>?
 
-    private var captions: [String] {
+    private var captionContent: String {
         let source = streamedText.isEmpty ? post.instagramCaptions : streamedText
-        return source
-            .components(separatedBy: "\n---\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        return source.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -31,7 +26,7 @@ struct InstagramView: View {
                 if isGenerating {
                     VStack(spacing: 8) {
                         ProgressView()
-                        Text("Generating captions…")
+                        Text("Generating caption…")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -40,13 +35,8 @@ struct InstagramView: View {
                     Text(error)
                         .foregroundStyle(.red)
                         .padding()
-                } else if captions.isEmpty && !streamedText.isEmpty {
-                    Text(streamedText)
-                        .padding()
-                        .font(.body)
-                        .textSelection(.enabled)
-                } else if !captions.isEmpty {
-                    captionPager
+                } else if !captionContent.isEmpty {
+                    captionCardView
                 } else {
                     ProgressView("Loading…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,7 +61,7 @@ struct InstagramView: View {
                 }
             }
             .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [shareText])
+                ShareSheet(items: [captionContent])
             }
             .onAppear {
                 startGenerationTask()
@@ -109,23 +99,28 @@ struct InstagramView: View {
         generationError = "Generation stopped because the app left the foreground. Try again when the app is active."
     }
 
-    private var captionPager: some View {
+    private var captionCardView: some View {
         VStack(spacing: 16) {
-            TabView(selection: $selectedCardIndex) {
-                ForEach(Array(captions.enumerated()), id: \.offset) { index, caption in
-                    CaptionCardView(caption: caption, cardNumber: index + 1, total: captions.count)
-                        .tag(index)
-                        .padding(.horizontal, 16)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Instagram Caption", systemImage: "camera.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    Divider()
+                    Text(captionContent)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(maxHeight: .infinity)
 
             HStack(spacing: 12) {
                 Button {
-                    let text = captions.indices.contains(selectedCardIndex)
-                        ? captions[selectedCardIndex] : ""
-                    UIPasteboard.general.string = text
+                    UIPasteboard.general.string = captionContent
                 } label: {
                     Label("Copy", systemImage: "doc.on.doc")
                         .frame(maxWidth: .infinity)
@@ -133,9 +128,6 @@ struct InstagramView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    let text = captions.indices.contains(selectedCardIndex)
-                        ? captions[selectedCardIndex] : ""
-                    shareText = text
                     showShareSheet = true
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
@@ -164,7 +156,7 @@ struct InstagramView: View {
             // LLM is already loaded from blog generation; just clear whisperKit residual.
             await downloadManager.prepareForLLMGeneration()
             let service = try await downloadManager.loadedLLMService()
-            let outputGuard = GenerationOutputGuard(maxCharacters: 6_000)
+            let outputGuard = GenerationOutputGuard(maxCharacters: 2_000)
             var fullText = ""
             for try await chunk in service.generateInstagramCaptions(blogContent: blogContent) {
                 if Task.isCancelled { return }
@@ -190,25 +182,3 @@ struct InstagramView: View {
     }
 }
 
-private struct CaptionCardView: View {
-    let caption: String
-    let cardNumber: Int
-    let total: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Caption \(cardNumber) of \(total)", systemImage: "camera.fill")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
-            Divider()
-            ScrollView {
-                Text(caption)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-}

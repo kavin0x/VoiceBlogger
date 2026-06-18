@@ -331,7 +331,7 @@ private struct OnboardingReadyPage: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text("~1.7 GB")
+                            Text("~1.0 GB")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
@@ -341,7 +341,7 @@ private struct OnboardingReadyPage: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text("~3.2 GB")
+                            Text("~2.5 GB")
                                 .font(.caption.monospacedDigit().weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -364,7 +364,7 @@ private struct OnboardingReadyPage: View {
                 .controlSize(.large)
             } else if !downloadStarted && !downloadManager.isDownloading {
                 VStack(spacing: 6) {
-                    Button("Download AI Models (~3.2 GB)") {
+                    Button("Download AI Models (~2.5 GB)") {
                         downloadStarted = true
                         Task { await downloadManager.downloadAll() }
                     }

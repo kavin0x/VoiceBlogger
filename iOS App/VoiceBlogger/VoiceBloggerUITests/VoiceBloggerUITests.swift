@@ -152,7 +152,7 @@ final class VoiceBloggerUITests: XCTestCase {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
         XCTAssertTrue(
-            app.buttons["Download AI Models (~3.2 GB)"].waitForExistence(timeout: 5)
+            app.buttons["Download AI Models (~2.5 GB)"].waitForExistence(timeout: 5)
         )
     }
 
@@ -167,14 +167,14 @@ final class VoiceBloggerUITests: XCTestCase {
     func testOnboardingPrivacyPageShowsLLMSize() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["~1.7 GB"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["~1.0 GB"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsTotalSize() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["~3.2 GB"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["~2.5 GB"].waitForExistence(timeout: 5))
     }
 
     // MARK: - Model Download View
@@ -215,7 +215,7 @@ final class VoiceBloggerUITests: XCTestCase {
     func testModelDownloadViewShowsTotalSizeFootnote() throws {
         launchAtModelDownloadView()
         XCTAssertTrue(
-            app.staticTexts["Total download: ~3.2 GB · Wi-Fi recommended"]
+            app.staticTexts["Total download: ~2.5 GB · Wi-Fi recommended"]
                 .waitForExistence(timeout: 5)
         )
     }

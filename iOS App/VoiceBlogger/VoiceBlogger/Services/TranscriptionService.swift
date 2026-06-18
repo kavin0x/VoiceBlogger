@@ -7,6 +7,9 @@ enum TranscriptionMode {
     case translate                       // speech → English (Whisper translation task)
 }
 
+// Compiled once; accessed from nonisolated contexts so must not be actor-isolated.
+private nonisolated(unsafe) let _tokenFilterRegex: NSRegularExpression = try! NSRegularExpression(pattern: "<\\|[^|>]+\\|>")
+
 // WhisperKit is open class without Sendable; @unchecked is safe here because
 // WhisperKit is only ever accessed from a single Task at a time in this service.
 final class TranscriptionService: @unchecked Sendable {
@@ -84,7 +87,8 @@ final class TranscriptionService: @unchecked Sendable {
 
     // Strip WhisperKit control tokens like <|startoftranscript|>, <|en|>, <|0.00|>, etc.
     nonisolated private static func filterTokens(_ text: String) -> String {
-        text.replacingOccurrences(of: "<\\|[^|>]+\\|>", with: "", options: .regularExpression)
+        let range = NSRange(text.startIndex..., in: text)
+        return _tokenFilterRegex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
             .trimmingCharacters(in: .whitespaces)
     }
 }

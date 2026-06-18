@@ -6,11 +6,11 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 
-let kLLMModelID = "mlx-community/Qwen3.5-2B-MLX-4bit"
+let kLLMModelID = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
 let kWhisperModelID = "openai_whisper-medium"
 
 private let kWhisperReadyKey = "whisperModelReady_v4"
-private let kLLMReadyKey = "llmModelReady_v3"
+private let kLLMReadyKey = "llmModelReady_v4"
 
 @MainActor
 @Observable

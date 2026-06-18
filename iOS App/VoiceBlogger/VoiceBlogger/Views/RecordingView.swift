@@ -134,7 +134,7 @@ struct RecordingView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will delete all downloaded AI models and re-download them (~3.2 GB). Use this if a model fails to load.")
+                Text("This will delete all downloaded AI models and re-download them (~2.5 GB). Use this if a model fails to load.")
             }
             .fileImporter(
                 isPresented: $showFilePicker,

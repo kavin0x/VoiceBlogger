@@ -40,7 +40,7 @@ struct VoiceBloggerApp: App {
                 .environment(downloadManager)
                 .task {
                     // Skip model gating entirely during UI tests so views are reachable
-                    // without downloading ~3.2 GB of models on every test run.
+                    // without downloading ~2.5 GB of models on every test run.
                     guard ProcessInfo.processInfo.environment["UI_TESTING"] == nil else { return }
                     await downloadManager.warmWhisper()
                     if onboardingComplete && !downloadManager.allModelsReady {
