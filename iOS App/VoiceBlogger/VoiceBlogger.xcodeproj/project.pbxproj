@@ -256,6 +256,7 @@
 				es,
 				gu,
 				"zh-Hans",
+				fr,
 			);
 			mainGroup = 8AD556402FCBAA01001151C1;
 			minimizedProjectReferenceProxies = 1;
@@ -477,6 +478,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VoiceBlogger/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -517,6 +519,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VoiceBlogger/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
