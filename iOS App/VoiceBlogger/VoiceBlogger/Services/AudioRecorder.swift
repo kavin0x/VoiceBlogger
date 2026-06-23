@@ -63,27 +63,23 @@ final class AudioRecorder: NSObject {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
-        let newRecorder = try AVAudioRecorder(url: tempURL, settings: settings)
-        newRecorder.delegate = self
-        newRecorder.isMeteringEnabled = true
+        try await activateRecordingSession()
 
-        // Activate audio session on a global background queue so the synchronous
-        // setCategory/setActive calls never block the main thread.
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
-                    try session.setActive(true)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+        do {
+            let newRecorder = try AVAudioRecorder(url: tempURL, settings: settings)
+            newRecorder.delegate = self
+            newRecorder.isMeteringEnabled = true
+            newRecorder.prepareToRecord()
+
+            guard newRecorder.record() else {
+                throw AudioRecorderError.recordingCouldNotStart
             }
-        }
-        newRecorder.record()
 
-        recorder = newRecorder
+            recorder = newRecorder
+        } catch {
+            Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+            throw error
+        }
         currentAudioURL = tempURL
         isRecording = true
         recordingStartTime = .now
@@ -116,6 +112,27 @@ final class AudioRecorder: NSObject {
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
     }
 
+    private func activateRecordingSession() async throws {
+        // Activate audio session on a global background queue so the synchronous
+        // setCategory/setActive calls never block the main thread.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(
+                        .playAndRecord,
+                        mode: .default,
+                        options: [.allowBluetoothHFP, .defaultToSpeaker]
+                    )
+                    try session.setActive(true)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     private func setupNotifications() {
         // Handle phone calls, Siri, and other audio session interruptions
         let interruptionObs = NotificationCenter.default.addObserver(
@@ -126,16 +143,18 @@ final class AudioRecorder: NSObject {
             MainActor.assumeIsolated { self?.handleInterruption(notification) }
         }
 
-        // Stop the level meter when going to background — waveform isn't visible
+        // Stop UI-only level updates in the background. The recorder continues writing audio.
         let backgroundObs = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.stopLevelTimer() }
+            MainActor.assumeIsolated {
+                self?.stopLevelTimer()
+            }
         }
 
-        // Restart the level meter when returning to foreground
+        // Restart UI-only level updates when returning to foreground.
         let foregroundObs = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
@@ -173,7 +192,7 @@ final class AudioRecorder: NSObject {
 
     private func startTimers() {
         startLevelTimer()
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let start = self?.recordingStartTime else { return }
                 self?.duration = Date.now.timeIntervalSince(start)
@@ -189,9 +208,7 @@ final class AudioRecorder: NSObject {
 
     private func startLevelTimer() {
         levelTimer?.invalidate()
-        // 15 Hz is indistinguishable from 20 Hz visually but saves ~25% of main-thread
-        // timer callbacks and battery during long recordings.
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateLevels() }
         }
     }
@@ -204,8 +221,23 @@ final class AudioRecorder: NSObject {
     private func updateLevels() {
         recorder?.updateMeters()
         let level = recorder?.averagePower(forChannel: 0) ?? -60
-        audioLevels.removeFirst()
-        audioLevels.append(level)
+        if audioLevels.isEmpty {
+            audioLevels = Array(repeating: level, count: 30)
+        } else {
+            audioLevels.removeFirst()
+            audioLevels.append(level)
+        }
+    }
+}
+
+private enum AudioRecorderError: LocalizedError {
+    case recordingCouldNotStart
+
+    var errorDescription: String? {
+        switch self {
+        case .recordingCouldNotStart:
+            "The microphone could not start recording."
+        }
     }
 }
 

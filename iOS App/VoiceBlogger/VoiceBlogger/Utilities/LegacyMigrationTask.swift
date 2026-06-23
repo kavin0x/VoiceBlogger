@@ -53,6 +53,13 @@ func migrateLegacyStoreIfNeeded(into context: ModelContext) async {
         ))
     }
 
-    try? context.save()
-    UserDefaults.standard.set(true, forKey: "legacyMigrationV2Complete")
+    // Only mark migration complete if the save succeeds. If it fails, the flag
+    // stays unset so migration reruns on the next launch rather than silently
+    // discarding all migrated posts.
+    do {
+        try context.save()
+        UserDefaults.standard.set(true, forKey: "legacyMigrationV2Complete")
+    } catch {
+        // Save failed — migration will retry on next launch.
+    }
 }

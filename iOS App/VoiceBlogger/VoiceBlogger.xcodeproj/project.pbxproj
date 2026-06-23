@@ -19,9 +19,19 @@
 		8AB9EBC82FCBBC3500ABF038 /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBC72FCBBC3500ABF038 /* MLXFast */; };
 		8AB9EBCA2FCBBC3500ABF038 /* MLXRandom in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBC92FCBBC3500ABF038 /* MLXRandom */; };
 		8AB9EBCF2FCBBCDA00ABF038 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBCE2FCBBCDA00ABF038 /* Tokenizers */; };
+		8AC9F37D2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */; };
+		8AC9F37E2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */; };
+		8AC9F37F2FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		8AC9F3772FE8C17C00661D31 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8AD556412FCBAA01001151C1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8AC9F3752FE8C17C00661D31;
+			remoteInfo = VoiceBloggerLiveActivities;
+		};
 		8AD556592FCBAA03001151C1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8AD556412FCBAA01001151C1 /* Project object */;
@@ -38,7 +48,25 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		8AC9F3832FE8C17C00661D31 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				8AC9F37F2FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VoiceBloggerLiveActivities.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBloggerLiveActivities.swift; sourceTree = "<group>"; };
+		8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceBloggerActivityAttributes.swift; path = VoiceBlogger/Shared/VoiceBloggerActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		8AC9F3842FE8C17C00661D31 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8AD556492FCBAA01001151C1 /* VoiceBlogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceBlogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -76,6 +104,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		8AC9F3812FE8C17C00661D31 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AD556462FCBAA01001151C1 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -119,6 +154,16 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		8AC9F3732FE8C17C00661D31 /* VoiceBloggerLiveActivities */ = {
+			isa = PBXGroup;
+			children = (
+				8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */,
+				8AC9F3842FE8C17C00661D31 /* Info.plist */,
+				8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */,
+			);
+			path = VoiceBloggerLiveActivities;
+			sourceTree = "<group>";
+		};
 		8AD556402FCBAA01001151C1 = {
 			isa = PBXGroup;
 			children = (
@@ -127,6 +172,7 @@
 				8AD556652FCBAA03001151C1 /* VoiceBloggerUITests */,
 				8AB9EBCD2FCBBCDA00ABF038 /* Frameworks */,
 				8AD5564A2FCBAA01001151C1 /* Products */,
+				8AC9F3732FE8C17C00661D31 /* VoiceBloggerLiveActivities */,
 			);
 			sourceTree = "<group>";
 		};
@@ -136,6 +182,7 @@
 				8AD556492FCBAA01001151C1 /* VoiceBlogger.app */,
 				8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */,
 				8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */,
+				8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -143,6 +190,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		8AC9F3752FE8C17C00661D31 /* VoiceBloggerLiveActivities */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8AC9F37A2FE8C17C00661D31 /* Build configuration list for PBXNativeTarget "VoiceBloggerLiveActivities" */;
+			buildPhases = (
+				8AC9F3802FE8C17C00661D31 /* Sources */,
+				8AC9F3812FE8C17C00661D31 /* Frameworks */,
+				8AC9F3822FE8C17C00661D31 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VoiceBloggerLiveActivities;
+			productName = VoiceBloggerLiveActivities;
+			productReference = 8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8AD556482FCBAA01001151C1 /* VoiceBlogger */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8AD5566C2FCBAA03001151C1 /* Build configuration list for PBXNativeTarget "VoiceBlogger" */;
@@ -150,10 +214,12 @@
 				8AD556452FCBAA01001151C1 /* Sources */,
 				8AD556462FCBAA01001151C1 /* Frameworks */,
 				8AD556472FCBAA01001151C1 /* Resources */,
+				8AC9F3832FE8C17C00661D31 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				8AC9F3762FE8C17C00661D31 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8AD5564B2FCBAA01001151C1 /* VoiceBlogger */,
@@ -229,10 +295,13 @@
 		8AD556412FCBAA01001151C1 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsInParallel = 1;
+				BuildIndependentTargetsInParallel = YES;
 				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					8AC9F3752FE8C17C00661D31 = {
+						CreatedOnToolsVersion = 26.5;
+					};
 					8AD556482FCBAA01001151C1 = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -275,11 +344,19 @@
 				8AD556482FCBAA01001151C1 /* VoiceBlogger */,
 				8AD556572FCBAA03001151C1 /* VoiceBloggerTests */,
 				8AD556612FCBAA03001151C1 /* VoiceBloggerUITests */,
+				8AC9F3752FE8C17C00661D31 /* VoiceBloggerLiveActivities */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		8AC9F3822FE8C17C00661D31 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AD556472FCBAA01001151C1 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -304,6 +381,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		8AC9F3802FE8C17C00661D31 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8AC9F37D2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift in Sources */,
+				8AC9F37E2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8AD556452FCBAA01001151C1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -328,6 +414,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		8AC9F3762FE8C17C00661D31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8AC9F3752FE8C17C00661D31 /* VoiceBloggerLiveActivities */;
+			targetProxy = 8AC9F3772FE8C17C00661D31 /* PBXContainerItemProxy */;
+		};
 		8AD5565A2FCBAA03001151C1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 8AD556482FCBAA01001151C1 /* VoiceBlogger */;
@@ -341,6 +432,56 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		8AC9F3782FE8C17C00661D31 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8D9T44T824;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoiceBloggerLiveActivities/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger.VoiceBloggerLiveActivities;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Debug;
+		};
+		8AC9F3792FE8C17C00661D31 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8D9T44T824;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = VoiceBloggerLiveActivities/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.1;
+				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger.VoiceBloggerLiveActivities;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				WRAPPER_EXTENSION = appex;
+			};
+			name = Release;
+		};
 		8AD5566A2FCBAA03001151C1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -480,6 +621,8 @@
 				INFOPLIST_FILE = VoiceBlogger/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -490,7 +633,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -521,6 +664,8 @@
 				INFOPLIST_FILE = VoiceBlogger/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone.";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivitiesFrequentUpdates = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -531,7 +676,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -635,6 +780,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8AC9F37A2FE8C17C00661D31 /* Build configuration list for PBXNativeTarget "VoiceBloggerLiveActivities" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8AC9F3782FE8C17C00661D31 /* Debug */,
+				8AC9F3792FE8C17C00661D31 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8AD556442FCBAA01001151C1 /* Build configuration list for PBXProject "VoiceBlogger" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

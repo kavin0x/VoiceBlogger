@@ -11,9 +11,9 @@ struct BlogListView: View {
             Group {
                 if posts.isEmpty {
                     ContentUnavailableView(
-                        "No Blog Posts Yet",
+                        "No Generated Content Yet",
                         systemImage: "doc.text",
-                        description: Text("Record your voice and generate a blog post to see it here.")
+                        description: Text("Record your voice and generate notes or a post to see it here.")
                     )
                 } else {
                     List {
@@ -26,6 +26,7 @@ struct BlogListView: View {
                                 }
                             } label: {
                                 BlogPostRowView(post: post)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -60,13 +61,22 @@ private struct BlogPostRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(post.title.isEmpty ? "Untitled Post" : post.title)
+            let contentKind = BlogGenerationHandoff.contentKind(for: post.transcript)
+            Text(post.title.isEmpty ? "Untitled \(contentKind.displayName)" : post.title)
                 .font(.headline)
                 .lineLimit(2)
             HStack {
                 Text(post.createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if post.duration > 0 {
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Text(formattedDuration(post.duration))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
                 if post.transcriptionState == .untranscribed {
                     Label("Untranscribed", systemImage: "waveform.slash")
@@ -78,7 +88,7 @@ private struct BlogPostRowView: View {
                         .foregroundStyle(.orange)
                 }
                 if !post.blogContent.isEmpty {
-                    Label("Blog", systemImage: "doc.text.fill")
+                    Label(contentKind.historyLabel, systemImage: contentKind.historySymbol)
                         .font(.caption2)
                         .foregroundStyle(.green)
                 }
@@ -96,5 +106,11 @@ private struct BlogPostRowView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        let mins = Int(duration) / 60
+        let secs = Int(duration) % 60
+        return String(format: "%d:%02d", mins, secs)
     }
 }

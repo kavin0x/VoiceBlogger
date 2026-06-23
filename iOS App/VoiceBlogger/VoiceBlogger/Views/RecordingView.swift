@@ -12,6 +12,7 @@ struct RecordingView: View {
     @State private var showFilePicker = false
     @State private var showResetConfirm = false
     @State private var showAbout = false
+    @State private var recordPulse = false
 
     var body: some View {
         NavigationStack {
@@ -63,6 +64,11 @@ struct RecordingView: View {
                         Circle()
                             .fill(recorder.isRecording ? Color.red : Color.blue)
                             .frame(width: 80, height: 80)
+                            .shadow(
+                                color: (recorder.isRecording ? Color.red : Color.blue)
+                                    .opacity(recordPulse ? 0.55 : 0.15),
+                                radius: recordPulse ? 22 : 6
+                            )
                         Image(systemName: recorder.isRecording ? "stop.fill" : "mic.fill")
                             .font(.title)
                             .foregroundStyle(.white)
@@ -74,6 +80,15 @@ struct RecordingView: View {
                 .animation(.spring(duration: 0.3), value: recorder.isRecording)
                 .disabled(recorder.permissionDenied)
                 .opacity(recorder.permissionDenied ? 0.4 : 1.0)
+                .onChange(of: recorder.isRecording) { _, isRecording in
+                    withAnimation(
+                        isRecording
+                            ? .easeInOut(duration: 0.85).repeatForever(autoreverses: true)
+                            : .easeOut(duration: 0.3)
+                    ) {
+                        recordPulse = isRecording
+                    }
+                }
 
                 Text(recorder.isRecording ? "Tap to stop" : "Tap to record")
                     .font(.caption)
@@ -84,14 +99,9 @@ struct RecordingView: View {
                         showFilePicker = true
                     } label: {
                         Label("Upload Recording", systemImage: "square.and.arrow.up")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 14)
-                            .background(Color.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 }
 
                 Spacer()
@@ -148,6 +158,9 @@ struct RecordingView: View {
             .sheet(isPresented: $showAbout) {
                 AboutView()
                     .presentationDetents([.medium])
+            }
+            .onAppear {
+                Task { await downloadManager.warmWhisper() }
             }
             .alert("Microphone Access Required", isPresented: $showPermissionAlert) {
                 Button("Open Settings") {

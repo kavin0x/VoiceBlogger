@@ -22,6 +22,77 @@ struct VoiceBloggerTests {
         #expect(!BlogGenerationHandoff.canGenerateBlog(from: "Transcript", isBusy: true))
     }
 
+    @Test func contentKindDetectsMeetingNotes() {
+        let transcript = """
+        Product sync meeting. Agenda was onboarding and pricing.
+        We discussed launch blockers and decided to keep the beta invite-only.
+        Action items: Maya follow up with legal by Friday. Jordan owns the pricing deck.
+        Open question: whether support needs another walkthrough.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .meetingNotes)
+    }
+
+    @Test func contentKindDetectsRegularNotes() {
+        let transcript = """
+        Remember to buy coffee filters.
+        - draft the outline for the workshop
+        - look up the camera adapter
+        - send Sam the invoice
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+    }
+
+    @Test func contentKindDetectsShortReminderAsNotes() {
+        let transcript = "Remember to send Sam the invoice tomorrow."
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+    }
+
+    @Test func contentKindDetectsAsteriskBulletsAsNotes() {
+        let transcript = """
+        * order coffee filters
+        * draft workshop outline
+        * send Sam the invoice
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+    }
+
+    @Test func contentKindDefaultsArticleLikeTranscriptToBlogPost() {
+        let transcript = """
+        I used to think consistency meant doing the exact same thing every day, but I learned that consistency is really about returning to the work after interruptions. That lesson changed how I plan creative projects and how I talk about progress with readers.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .blogPost)
+    }
+
+    @Test func promptBuilderRoutesMeetingNotesAwayFromBlogPrompt() {
+        let messages = PromptBuilder.contentMessages(
+            transcript: "Meeting agenda, decisions, and action items.",
+            contentKind: .meetingNotes
+        )
+        let system = messages.first?["content"] ?? ""
+
+        #expect(system.contains("meeting notes, not blog posts"))
+        #expect(system.contains("Action Items"))
+    }
+
+    @Test func linkedinPromptIncludesTemplatesAndSinglePostContract() {
+        let messages = PromptBuilder.linkedinMessages(blogContent: "We shipped the beta after reducing launch time by 35%.")
+        let system = messages.first?["content"] ?? ""
+        let user = messages.dropFirst().first?["content"] ?? ""
+
+        #expect(system.contains("Original Research / Data Insights"))
+        #expect(system.contains("Project Update / Milestone"))
+        #expect(system.contains("Event / Long-Form Recap"))
+        #expect(system.contains("Return ONE finished LinkedIn post only"))
+        #expect(system.contains("2-3 highly relevant hashtags"))
+        #expect(user.contains("Select the best POST TYPE TEMPLATE"))
+        #expect(user.contains("We shipped the beta"))
+    }
+
     @Test func markdownProcessorParsesCommonBlogBlocks() {
         let markdown = """
         # Title
@@ -126,6 +197,24 @@ struct VoiceBloggerTests {
             .heading(level: 1, text: "Setext Title"),
             .codeBlock(language: nil, code: "indented code\ncontinues")
         ])
+    }
+
+    @Test func transcriptionFilterRemovesWhisperControlTokens() {
+        let text = "<|startoftranscript|><|en|><|0.00|> Hello world <|endoftext|>"
+
+        #expect(TranscriptionService.filterTokens(text) == "Hello world")
+    }
+
+    @Test func transcriptionFilterCanDetectPlaceholderOnlyOutput() {
+        let text = "<|startoftranscript|>[Speaking in a foreign language]<|endoftext|>"
+
+        #expect(TranscriptionService.filterTokens(text).isEmpty)
+    }
+
+    @Test func transcriptionFilterRemovesNonSpeechAnnotations() {
+        let text = "<|startoftranscript|><|en|><|0.00|> *singing* Today I want to talk about launch notes. [Music] <|endoftext|>"
+
+        #expect(TranscriptionService.filterTokens(text) == "Today I want to talk about launch notes.")
     }
 
 }

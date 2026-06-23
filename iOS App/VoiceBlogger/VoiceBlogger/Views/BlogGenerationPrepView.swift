@@ -34,14 +34,14 @@ struct BlogGenerationPrepView: View {
                     .buttonStyle(.borderedProminent)
                 } else {
                     ProgressView()
-                    Text("Preparing Blog Generator...")
+                    Text("Preparing Generator...")
                         .foregroundStyle(.secondary)
                 }
             }
             .padding()
             .frame(maxWidth: 480)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("Blog Post")
+            .navigationTitle("Generate")
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await prepareAndContinue()
@@ -60,7 +60,7 @@ struct BlogGenerationPrepView: View {
 
         let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
         guard !transcript.isEmpty else {
-            error = "Transcript is empty. Re-transcribe before generating a blog post."
+            error = "Transcript is empty. Re-transcribe before generating content."
             return
         }
 

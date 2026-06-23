@@ -1,16 +1,59 @@
 import Foundation
 
 enum PromptBuilder {
+    private struct PromptTemplate {
+        let name: String
+        let useWhen: String
+        let structure: [String]
+        let style: String
+
+        var promptText: String {
+            """
+            TEMPLATE: \(name)
+            Use when: \(useWhen)
+            Structure: \(structure.joined(separator: " -> "))
+            Style: \(style)
+            """
+        }
+    }
+
+    private struct SocialPromptObject {
+        let role: String
+        let objective: String
+        let outputContract: String
+        let templates: [PromptTemplate]
+        let rules: [String]
+
+        var systemPrompt: String {
+            """
+            ROLE
+            \(role)
+
+            OBJECTIVE
+            \(objective)
+
+            OUTPUT CONTRACT
+            \(outputContract)
+
+            POST TYPE TEMPLATES
+            \(templates.map(\.promptText).joined(separator: "\n\n"))
+
+            RULES
+            \(rules.map { "- \($0)" }.joined(separator: "\n"))
+            """
+        }
+    }
+
     private static let instagramSummaryCharacterLimit = 1800
-    private static let linkedinSummaryCharacterLimit = 2200
+    private static let linkedinSummaryCharacterLimit = 2400
     // Qwen2.5 1.5B has a 32k-token context window. With ~300 tokens for the prompt
     // template and 1800 reserved for output, the transcript budget sits at ~4000 tokens.
-    // KV cache at 4k tokens is ~460 MB — safe within the 768 MB MLX cache limit on device.
+    // KV cache at 4k tokens is ~460 MB - safe within the 768 MB MLX cache limit on device.
     // Transcripts above this threshold are chunked and synthesised in multiple passes.
-    static let maxTranscriptCharacters = 16_000
+    nonisolated static let maxTranscriptCharacters = 16_000
     // Chunk size and overlap for the map-reduce path (transcripts > maxTranscriptCharacters).
-    private static let chunkSize = 5_500
-    private static let chunkOverlap = 400
+    nonisolated private static let chunkSize = 5_500
+    nonisolated private static let chunkOverlap = 400
 
     // MARK: - Chunking helpers
 
@@ -35,25 +78,18 @@ enum PromptBuilder {
 
     nonisolated static func chunkSummaryMessages(for chunk: String, index: Int, of total: Int) -> [[String: String]] {
         [
-            ["role": "system", "content": "You extract key information from voice transcript segments. Output a compact bullet list of the main facts, ideas, names, and details — no commentary, no headers, no filler."],
+            ["role": "system", "content": "You extract key information from voice transcript segments. Output a compact bullet list of the main facts, ideas, names, decisions, tasks, and details. Do not add commentary, headers, or filler."],
             ["role": "user", "content": "Transcript segment \(index + 1) of \(total):\n\n\(chunk)\n\nKey points:"]
         ]
     }
 
-    nonisolated static func synthesisMessages(from summaries: [String]) -> [[String: String]] {
+    nonisolated static func synthesisMessages(from summaries: [String], contentKind: GeneratedContentKind) -> [[String: String]] {
         let numbered = summaries.enumerated()
             .map { "[\($0.offset + 1)]\n\($0.element)" }
             .joined(separator: "\n\n")
-        let system = """
-        You convert structured notes into clean written blog posts.
-        Use the key points provided to write a well-organised post that preserves the speaker's meaning.
-        Fix grammar and paragraph flow. Use simple markdown: one title, optional section headings, paragraphs, and lists when useful.
-        Do not invent new claims. Do not include commentary about your process.
-        Output length must be proportional to the amount of content in the notes — do not pad or expand.
-        Stop after the final paragraph.
-        """
+        let system = systemPrompt(for: contentKind)
         let user = """
-        Write a blog post from these key points extracted from a voice recording:
+        Create \(contentKind.displayName.lowercased()) from these key points extracted from a voice recording:
 
         \(numbered)
         """
@@ -65,49 +101,37 @@ enum PromptBuilder {
 
     // MARK: - Single-pass prompts
 
-    static func blogMessages(transcript: String) -> [[String: String]] {
+    static func contentMessages(transcript: String, contentKind: GeneratedContentKind) -> [[String: String]] {
         let wordCount = transcript.split(separator: " ").count
-        let system = """
-        You clean up voice transcripts into readable notes or blog posts.
-        Preserve the speaker's words, meaning, names, and facts exactly.
-        Remove only: filler words (um, uh, like, you know), false starts, and repeated phrases.
-        Fix punctuation and sentence structure.
-
-        OUTPUT LENGTH RULE: Match the output length to the input. A short transcript produces a short note. Do not pad, expand, or add context that wasn't spoken.
-        - Under 100 words in → 1-3 short paragraphs max, no title needed
-        - 100–400 words in → clean prose, minimal headings if topics clearly shift
-        - Over 400 words in → organize with a title and section headings if helpful
-
-        Never add explanations, background context, or advice the speaker did not say.
-        Never add a title or headers unless the content is clearly long enough to need them.
-        Fix obvious transcription errors (foreign words, names mangled by speech-to-text).
-        Use simple markdown only. Stop after the final sentence.
-        """
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))
             : transcript
         let user = """
-        Clean up this voice transcript (~\(wordCount) words). Output should be similar in length.
+        Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Match the structure and length to the actual content.
 
         Transcript:
         \(safeTranscript)
         """
         return [
-            ["role": "system", "content": system],
+            ["role": "system", "content": systemPrompt(for: contentKind)],
             ["role": "user", "content": user]
         ]
     }
 
+    static func blogMessages(transcript: String) -> [[String: String]] {
+        contentMessages(transcript: transcript, contentKind: .blogPost)
+    }
+
     static func instagramMessages(blogContent: String) -> [[String: String]] {
         let system = """
-        You write Instagram captions. Write ONE caption only — not multiple variations.
+        You write Instagram captions. Write ONE caption only - not multiple variations.
 
         STRUCTURE (follow exactly):
         1. Hook (line 1): 5-10 words. Bold statement, relatable confession, or surprising fact. No emojis on this line.
         2. [blank line]
-        3. Body: 3-5 short lines with line breaks. Tell a micro-story or share one clear insight from the content. Weave in 1-2 relevant emojis naturally — not at the start of every line.
+        3. Body: 3-5 short lines with line breaks. Tell a micro-story or share one clear insight from the content. Weave in 1-2 relevant emojis naturally - not at the start of every line.
         4. [blank line]
-        5. CTA: One specific call-to-action question or prompt. Examples: "Save this for when you need it 🔖", "Comment YES if you've been here 👇", "Tag someone who needs to hear this."
+        5. CTA: One specific call-to-action question or prompt. Examples: "Save this for when you need it", "Comment YES if you've been here", "Tag someone who needs to hear this."
         6. [blank line]
         7. Hashtags: 3-5 niche, relevant tags on the final line.
 
@@ -116,7 +140,7 @@ enum PromptBuilder {
         - Write in first person, like a real person sharing something genuine.
         - No corporate speak. No "I'm excited to share..."
         - Do not mention a blog, link, or external content. The caption stands alone.
-        - Be specific — use real details from the content, not generic fluff.
+        - Be specific - use real details from the content, not generic fluff.
         """
         let user = """
         Write one Instagram caption based on this content:
@@ -130,29 +154,11 @@ enum PromptBuilder {
     }
 
     static func linkedinMessages(blogContent: String) -> [[String: String]] {
-        let system = """
-        You write LinkedIn posts. Write ONE post only — not multiple variations.
-
-        STRUCTURE (follow exactly):
-        1. Hook (line 1): Under 210 characters. A bold insight, a "I used to think X" opener, or a surprising number/fact. This must stand alone — it's what people see before tapping "see more."
-        2. [blank line]
-        3. Body: 3-5 short punchy sentences or very short paragraphs. Each sentence under 12 words. Put each thought on its own line for mobile readability. Share a real insight, lesson, or story from the content.
-        4. [blank line]
-        5. Closing question: End with one genuine question that invites comments. Make it specific to the topic.
-        6. [blank line]
-        7. Hashtags: 2-3 relevant hashtags only, on the last line.
-
-        RULES:
-        - Total length: 700-1,300 characters (roughly 100-180 words).
-        - Write in first person. Be direct and human — no corporate voice.
-        - No "Key Takeaways" sections. No bullet lists. No headers.
-        - No external links.
-        - Be specific — use real details, numbers, or names from the content.
-        - Do not start with "I'm excited to share" or any hollow opener.
-        """
+        let system = linkedinPromptObject.systemPrompt
         let user = """
-        Write one LinkedIn post based on this content:
+        Select the best POST TYPE TEMPLATE for the content below, then write one complete LinkedIn post.
 
+        Content source:
         \(structuralSummary(of: blogContent, limit: linkedinSummaryCharacterLimit))
         """
         return [
@@ -161,7 +167,113 @@ enum PromptBuilder {
         ]
     }
 
+    private static let linkedinPromptObject = SocialPromptObject(
+        role: "Act as an expert LinkedIn professional update generator and executive ghostwriter. Write with strategic clarity, specific detail, and a human first-person voice.",
+        objective: "Transform the source content into a high-engagement LinkedIn post that feels authentic, polished, and native to the platform. Preserve the source meaning exactly and choose the post structure that best fits the material.",
+        outputContract: "Return ONE finished LinkedIn post only. Do not return multiple options, labels, analysis, template names, explanations, or markdown headings.",
+        templates: [
+            PromptTemplate(
+                name: "Original Research / Data Insights",
+                useWhen: "the content includes data, research, metrics, a pattern, or a counter-intuitive finding",
+                structure: [
+                    "hook with the surprising stat or finding",
+                    "core data or observation",
+                    "why it matters",
+                    "actionable takeaway",
+                    "specific CTA question",
+                    "2-3 relevant hashtags"
+                ],
+                style: "analytical, insightful, forward-looking, and precise"
+            ),
+            PromptTemplate(
+                name: "Project Update / Milestone",
+                useWhen: "the content describes shipping, launching, completing, learning, or reaching a meaningful project milestone",
+                structure: [
+                    "hook with the impact or result",
+                    "brief journey or challenge overcome",
+                    "team credit or gratitude when supported by the source",
+                    "what comes next",
+                    "specific CTA question",
+                    "2-3 relevant hashtags"
+                ],
+                style: "celebratory, humble, collaborative, and grounded"
+            ),
+            PromptTemplate(
+                name: "Event / Long-Form Recap",
+                useWhen: "the content recaps a talk, event, interview, podcast, workshop, article, or long-form discussion",
+                structure: [
+                    "hook with the biggest macro takeaway",
+                    "three distinct high-value lessons as short bullets",
+                    "how to apply the lessons",
+                    "specific CTA question",
+                    "2-3 relevant hashtags"
+                ],
+                style: "educational, generous, concise, and synthesizing"
+            )
+        ],
+        rules: [
+            "The first 1-2 lines must earn the 'see more' click. Avoid 'I am thrilled to announce', 'In today's fast-paced world', and other hollow openers.",
+            "Use short paragraphs of 1-3 sentences with frequent line breaks for mobile skimming.",
+            "Sound professional, conversational, authoritative, and human. Avoid corporate jargon such as synergy, utilize, and paradigm shift.",
+            "Use first person when the source supports it. Do not invent personal experiences, names, metrics, dates, claims, links, or gratitude.",
+            "Use at most 2-4 relevant emojis in the entire post, and never place one at the start of the hook.",
+            "Use bullets only for the Event / Long-Form Recap template; otherwise prefer short paragraphs.",
+            "End with a natural open-ended question or a clear next step that invites comments.",
+            "Put 2-3 highly relevant hashtags on the final line only.",
+            "Target 900-1,800 characters unless the source is very short; do not pad thin material."
+        ]
+    )
+
     // MARK: - Utilities
+
+    nonisolated private static func systemPrompt(for contentKind: GeneratedContentKind) -> String {
+        let baseRules = """
+        Preserve the speaker's meaning, names, facts, decisions, and constraints exactly.
+        Remove only filler words, false starts, repeated phrases, and transcription artifacts.
+        Fix punctuation, grammar, and obvious speech-to-text mistakes.
+        Do not invent context, advice, claims, dates, owners, or action items.
+        Use simple markdown only. Stop after the final useful line.
+        Match output length to input; do not pad or expand thin source material.
+        """
+
+        switch contentKind {
+        case .blogPost:
+            return """
+            You turn voice transcripts into readable blog posts only when the transcript contains article-like ideas, stories, opinions, or explanations.
+            \(baseRules)
+
+            BLOG STRUCTURE:
+            - Under 100 input words: write 1-3 short paragraphs, usually with no title.
+            - 100-400 input words: write clean prose with minimal headings only if topics clearly shift.
+            - Over 400 input words: use one title and section headings if helpful.
+            - Keep the speaker's voice. Do not make meeting minutes or task lists unless the transcript itself asks for that.
+            """
+        case .meetingNotes:
+            return """
+            You turn meeting transcripts into practical meeting notes, not blog posts.
+            \(baseRules)
+
+            MEETING NOTES STRUCTURE:
+            - Start with a concise title if the meeting topic is clear.
+            - Include sections only when supported by the transcript: Summary, Decisions, Action Items, Open Questions, Key Discussion Points.
+            - Put action items in a checklist. Include owner and deadline only when spoken; otherwise omit them.
+            - Keep decisions separate from ideas or unresolved discussion.
+            - Do not add narrative polish, hooks, introductions, or conclusions.
+            """
+        case .notes:
+            return """
+            You turn informal voice transcripts into clean personal notes, not blog posts.
+            \(baseRules)
+
+            NOTES STRUCTURE:
+            - Keep short notes short.
+            - Use bullets or a compact checklist when the transcript is a list, reminder, brainstorm, or capture note.
+            - Group related ideas under small headings only when there are multiple topics.
+            - Preserve rough note intent instead of turning it into an article, essay, or social post.
+            - Do not add a title unless it makes the note easier to scan.
+            """
+        }
+    }
 
     private static func structuralSummary(of text: String, limit: Int) -> String {
         var result: [String] = []

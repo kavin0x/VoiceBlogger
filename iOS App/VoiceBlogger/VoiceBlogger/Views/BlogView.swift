@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import os
 
 
 struct BlogView: View {
@@ -12,7 +11,7 @@ struct BlogView: View {
 
     @State private var streamedText = ""
     @State private var isGenerating = false
-    @State private var generationPhase = "Generating blog post…"
+    @State private var generationPhase = "Generating..."
     @State private var generationError: String?
     @State private var showShareSheet = false
     @State private var showAudioShareSheet = false
@@ -22,6 +21,7 @@ struct BlogView: View {
     @State private var editableText = ""
     @State private var generationTask: Task<Void, Never>?
 
+    var contentKind: GeneratedContentKind { BlogGenerationHandoff.contentKind(for: post.transcript) }
     var displayText: String { streamedText.isEmpty ? post.blogContent : streamedText }
     var shareText: String { isEditing ? editableText : displayText }
 
@@ -40,9 +40,20 @@ struct BlogView: View {
                     }
 
                     if let error = generationError {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.subheadline)
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(error)
+                                .foregroundStyle(.red)
+                                .font(.subheadline)
+                            if !isGenerating {
+                                Button {
+                                    reblog()
+                                } label: {
+                                    Label("Try Again", systemImage: "arrow.clockwise")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            }
+                        }
                     }
 
                     if !displayText.isEmpty {
@@ -51,7 +62,7 @@ struct BlogView: View {
                                 .font(.body)
                                 .frame(minHeight: 400)
                                 .scrollContentBackground(.hidden)
-                                .accessibilityLabel("Blog post content")
+                                .accessibilityLabel("Generated content")
                         } else if isGenerating || generationError != nil {
                             Text(displayText)
                                 .font(.body)
@@ -88,7 +99,7 @@ struct BlogView: View {
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            .navigationTitle(post.title.isEmpty ? "Blog Post" : post.title)
+            .navigationTitle(post.title.isEmpty ? contentKind.displayName : post.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -114,7 +125,7 @@ struct BlogView: View {
                                 Button {
                                     showShareSheet = true
                                 } label: {
-                                    Label("Share Blog", systemImage: "square.and.arrow.up")
+                                    Label(contentKind.shareTitle, systemImage: "square.and.arrow.up")
                                 }
                                 if post.audioFileURL != nil {
                                     Button {
@@ -133,7 +144,7 @@ struct BlogView: View {
                                 Button {
                                     reblog()
                                 } label: {
-                                    Label("Regenerate Blog", systemImage: "arrow.clockwise")
+                                    Label(contentKind.regenerateTitle, systemImage: "arrow.clockwise")
                                 }
                                 Divider()
                             }
@@ -196,7 +207,7 @@ struct BlogView: View {
     private func cancelGenerationForBackground() {
         guard isGenerating else { return }
         cancelGenerationTask()
-        generationError = "Generation stopped because the app left the foreground. Regenerate the post to try again."
+        generationError = "Generation stopped because the app left the foreground. Regenerate \(contentKind.displayName.lowercased()) to try again."
     }
 
     private func commitEdits() {
@@ -216,7 +227,8 @@ struct BlogView: View {
         post.title = ""
         streamedText = ""
         didComplete = false
-        generationPhase = "Generating blog post…"
+        generationError = nil
+        generationPhase = contentKind.generationPhaseTitle
         savePostContext()
         startGenerationTask()
     }
@@ -225,34 +237,30 @@ struct BlogView: View {
         guard !isGenerating && post.blogContent.isEmpty && !didComplete else { return }
         let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
         guard !transcript.isEmpty else {
-            generationError = "Transcript is empty. Re-transcribe before generating a blog post."
+            generationError = "Transcript is empty. Re-transcribe before generating content."
             return
         }
 
         isGenerating = true
         generationError = nil
-        generationPhase = "Generating blog post…"
+        generationPhase = contentKind.generationPhaseTitle
         defer { isGenerating = false }
 
         do {
-            if !downloadManager.hasLoadedLLMService {
-                await downloadManager.prepareForLLMGenerationBarrier()
-            }
-            let availMB = os_proc_available_memory() / (1024 * 1024)
-            os_log("BlogView: available memory before LLM load = %lu MB", type: .info, availMB)
             let service = try await downloadManager.loadedLLMService()
             let outputGuard = GenerationOutputGuard(maxCharacters: 18_000)
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
-            for try await chunk in service.generateBlog(transcript: transcript, onPhaseChange: { phase in
+            let detectedKind = BlogGenerationHandoff.contentKind(for: transcript)
+            for try await chunk in service.generateContent(transcript: transcript, contentKind: detectedKind, onPhaseChange: { phase in
                 Task { @MainActor in generationPhase = phase }
             }) {
                 if Task.isCancelled { return }
                 fullText = try outputGuard.appending(chunk, to: fullText)
                 pendingDisplayCharacterCount += chunk.count
 
-                if pendingDisplayCharacterCount >= 80 || Date().timeIntervalSince(lastDisplayUpdate) >= 0.12 {
+                if pendingDisplayCharacterCount >= 24 || Date().timeIntervalSince(lastDisplayUpdate) >= 0.05 {
                     streamedText = fullText
                     pendingDisplayCharacterCount = 0
                     lastDisplayUpdate = Date()

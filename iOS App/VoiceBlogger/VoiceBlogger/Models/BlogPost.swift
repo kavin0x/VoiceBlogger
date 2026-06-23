@@ -9,16 +9,16 @@ enum TranscriptionState: Int, Codable {
 
 @Model
 final class BlogPost {
-    var id: UUID
-    var title: String
-    var transcript: String
-    var blogContent: String
-    var instagramCaptions: String
+    var id: UUID = UUID()
+    var title: String = ""
+    var transcript: String = ""
+    var blogContent: String = ""
+    var instagramCaptions: String = ""
     var linkedinPost: String = ""
     var audioFilename: String?
-    var createdAt: Date
-    var duration: TimeInterval
-    var transcriptionState: TranscriptionState?
+    var createdAt: Date = Date()
+    var duration: TimeInterval = 0
+    var transcriptionState: TranscriptionState? = TranscriptionState.untranscribed
 
     init(
         title: String = "",
@@ -51,7 +51,10 @@ final class BlogPost {
 
 extension URL {
     static var recordingsDirectory: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // FileManager always returns at least one URL for .documentDirectory on iOS,
+        // but guard defensively rather than force-subscript.
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         return docs.appendingPathComponent("recordings", isDirectory: true)
     }
 }

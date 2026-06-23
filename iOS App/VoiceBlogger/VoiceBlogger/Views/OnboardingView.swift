@@ -32,7 +32,7 @@ struct OnboardingView: View {
                     }
                 }
                 Spacer()
-                HStack {
+                ZStack {
                     HStack(spacing: 6) {
                         ForEach(0..<4, id: \.self) { i in
                             Capsule()
@@ -42,12 +42,15 @@ struct OnboardingView: View {
                         }
                     }
                     .accessibilityHidden(true)
-                    Spacer()
+
                     if currentPage < 3 {
-                        Button("Next") {
-                            withAnimation { currentPage += 1 }
+                        HStack {
+                            Spacer()
+                            Button("Next") {
+                                withAnimation { currentPage += 1 }
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
                 .padding(.horizontal, 32)
@@ -112,7 +115,7 @@ private struct OnboardingWelcomePage: View {
     }
 }
 
-// MARK: - Page 2: Record (interactive)
+// MARK: - Page 2: Record
 
 private struct OnboardingRecordPage: View {
     @State private var isRecording = false
@@ -151,7 +154,7 @@ private struct OnboardingRecordPage: View {
             VStack(spacing: 12) {
                 Text("Just speak your mind")
                     .font(.title2.bold())
-                Text("Record yourself talking about anything — no scripts or editing needed. Even long recording... Just fine, just speak your mind!")
+                Text("Record yourself talking about anything — no scripts or editing needed. Long recordings are fine too, just speak your mind!")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -218,7 +221,7 @@ private struct OnboardingBlogPage: View {
             VStack(spacing: 12) {
                 Text("Your words, beautifully written")
                     .font(.title2.bold())
-                Text("AI transcribes your speech and crafts it into a well-structured blog post, ready to share. ")
+                Text("AI transcribes your speech and crafts it into a well-structured blog post, ready to share.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -268,6 +271,11 @@ private struct OnboardingReadyPage: View {
                 Text("Private by design")
                     .font(.title2.bold())
                 Text("Every AI model runs on your device. Your voice and data never leave your phone.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 44)
+                Text("This might take a while. Feel free to keep using your phone, download happens in the background!")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

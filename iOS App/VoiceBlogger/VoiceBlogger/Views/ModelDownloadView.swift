@@ -20,7 +20,7 @@ struct ModelDownloadView: View {
                     .accessibilityHidden(true)
                 Text("Setting Up VoiceBlogger")
                     .font(.title2.bold())
-                Text("AI models are required for speech recognition and blog generation. This one-time download requires an internet connection; after that, the app works fully offline.")
+                Text("AI models download once, continue in the background when iOS allows, and resume completed files automatically. After setup, the app works fully offline.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -30,14 +30,14 @@ struct ModelDownloadView: View {
                 DownloadRowView(
                     icon: "waveform",
                     title: "Advanced Speech Recognition",
-                    subtitle: "Supports 90+ languages · \(kWhisperDownloadSize)",
+                    subtitle: "Supports 90+ languages · \(kWhisperDownloadSize) · resumable",
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
                 DownloadRowView(
                     icon: "text.bubble.fill",
                     title: "Blog Generator",
-                    subtitle: kLLMDownloadSize,
+                    subtitle: "\(kLLMDownloadSize) · resumable parts",
                     progress: downloadManager.llmProgress,
                     isReady: downloadManager.isLLMReady
                 )
@@ -67,10 +67,10 @@ struct ModelDownloadView: View {
                     .controlSize(.large)
                 }
             } else if downloadManager.isDownloading {
-                ProgressView("Downloading…")
+                ProgressView("")
             } else {
                 VStack(spacing: 8) {
-                    Text("Total download: \(kTotalDownloadSize) · Wi-Fi recommended")
+                    Text("Total download: \(kTotalDownloadSize) · resumes where it left off")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Button("Download AI Models") {
@@ -85,6 +85,22 @@ struct ModelDownloadView: View {
         }
         .padding()
         .frame(maxWidth: 560)
+        .task {
+            // If models are already on disk (e.g. returning user after an app update),
+            // skip the download screen entirely and go straight to recording.
+            if downloadManager.allModelsReady {
+                appState.navigateTo(.recording)
+                return
+            }
+            downloadManager.continuePendingDownloadIfNeeded()
+        }
+        .onChange(of: downloadManager.allModelsReady) { _, ready in
+            guard ready else { return }
+            Task {
+                try? await Task.sleep(for: .milliseconds(800))
+                appState.navigateTo(.recording)
+            }
+        }
     }
 }
 

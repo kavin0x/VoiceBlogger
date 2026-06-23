@@ -38,7 +38,7 @@ final class LLMService: Sendable {
 
     init(container: ModelContainer) {
         self.container = container
-        MLX.Memory.cacheLimit = 768 * 1024 * 1024
+        MLX.Memory.cacheLimit = DeviceRAMTier.current.mlxCacheLimitBytes
     }
 
     static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
@@ -58,8 +58,67 @@ final class LLMService: Sendable {
     static func localModelDirectory() -> URL? {
         guard let repoID = HuggingFace.Repo.ID(rawValue: kLLMModelID) else { return nil }
         let cache = HubCache.default
-        guard let commitHash = cache.resolveRevision(repo: repoID, kind: .model, ref: "main") else { return nil }
-        return try? cache.snapshotPath(repo: repoID, kind: .model, commitHash: commitHash)
+
+        // Primary path: use the HF cache ref to resolve the exact commit snapshot.
+        if let commitHash = cache.resolveRevision(repo: repoID, kind: .model, ref: "main"),
+           let directory = try? cache.snapshotPath(repo: repoID, kind: .model, commitHash: commitHash),
+           directoryContainsFiles(directory) {
+            return directory
+        }
+
+        // Fallback: the ref file may be missing (e.g. after an app update) even though
+        // the snapshot files are fully on disk. Scan the snapshots directory directly and
+        // return the first hash-named subdirectory that contains files.
+        return localModelDirectoryByScanning()
+    }
+
+    private static func localModelDirectoryByScanning() -> URL? {
+        let fm = FileManager.default
+        // HubCache.default on sandboxed iOS uses Library/Caches/huggingface/hub.
+        // The repo folder name replaces "/" with "--" and is prefixed by kind:
+        // models--mlx-community--Qwen2.5-1.5B-Instruct-4bit/snapshots/<commitHash>/
+        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let repoFolderName = "models--" + kLLMModelID.replacingOccurrences(of: "/", with: "--")
+        let snapshotsDir = caches
+            .appendingPathComponent("huggingface/hub")
+            .appendingPathComponent(repoFolderName)
+            .appendingPathComponent("snapshots")
+
+        guard let entries = try? fm.contentsOfDirectory(
+            at: snapshotsDir,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+
+        for entry in entries {
+            let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            if isDir && directoryContainsFiles(entry) {
+                return entry
+            }
+        }
+        return nil
+    }
+
+    private static func directoryContainsFiles(_ directory: URL) -> Bool {
+        let fm = FileManager.default
+        // The HF cache stores model files as symlinks in snapshot dirs pointing to blobs.
+        // We check fm.fileExists (which resolves symlinks) rather than isRegularFileKey
+        // (which returns false for symlinks themselves on some OS versions).
+        guard let enumerator = fm.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return false
+        }
+
+        for case let url as URL in enumerator {
+            let vals = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
+            if vals?.isRegularFile == true || vals?.isSymbolicLink == true {
+                return true
+            }
+        }
+        return false
     }
 
     // Load from a directory that was already downloaded (e.g. by a prefetch task).
@@ -159,11 +218,12 @@ final class LLMService: Sendable {
         return result
     }
 
-    // Multi-pass path: summarise each chunk then synthesise into a blog post.
+    // Multi-pass path: summarise each chunk then synthesise into the detected content type.
     // onPhaseChange is called with a human-readable status string at each stage so the UI
-    // can show progress (e.g. "Analyzing part 2 of 4…").
-    private func generateBlogChunked(
+    // can show progress (e.g. "Analyzing part 2 of 4...").
+    private func generateContentChunked(
         transcript: String,
+        contentKind: GeneratedContentKind,
         onPhaseChange: (@Sendable (String) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
@@ -185,9 +245,9 @@ final class LLMService: Sendable {
                     }
 
                     try Task.checkCancellation()
-                    onPhaseChange?("Writing blog post…")
+                    onPhaseChange?("Writing \(contentKind.displayName.lowercased())...")
 
-                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries)
+                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries, contentKind: contentKind)
                     for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800) {
                         try Task.checkCancellation()
                         if case .terminated = continuation.yield(token) { break }
@@ -203,14 +263,33 @@ final class LLMService: Sendable {
         }
     }
 
+    func generateContent(
+        transcript: String,
+        contentKind: GeneratedContentKind,
+        onPhaseChange: (@Sendable (String) -> Void)? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        if PromptBuilder.needsChunking(transcript) {
+            return generateContentChunked(
+                transcript: transcript,
+                contentKind: contentKind,
+                onPhaseChange: onPhaseChange
+            )
+        }
+        return generateStream(
+            messages: PromptBuilder.contentMessages(transcript: transcript, contentKind: contentKind),
+            maxTokens: 1800
+        )
+    }
+
     func generateBlog(
         transcript: String,
         onPhaseChange: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
-        if PromptBuilder.needsChunking(transcript) {
-            return generateBlogChunked(transcript: transcript, onPhaseChange: onPhaseChange)
-        }
-        return generateStream(messages: PromptBuilder.blogMessages(transcript: transcript), maxTokens: 1800)
+        generateContent(
+            transcript: transcript,
+            contentKind: .blogPost,
+            onPhaseChange: onPhaseChange
+        )
     }
 
     func generateInstagramCaptions(blogContent: String) -> AsyncThrowingStream<String, Error> {
@@ -218,6 +297,6 @@ final class LLMService: Sendable {
     }
 
     func generateLinkedInPost(blogContent: String) -> AsyncThrowingStream<String, Error> {
-        generateStream(messages: PromptBuilder.linkedinMessages(blogContent: blogContent), maxTokens: 400)
+        generateStream(messages: PromptBuilder.linkedinMessages(blogContent: blogContent), maxTokens: 650)
     }
 }

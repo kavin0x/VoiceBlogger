@@ -8,7 +8,7 @@ No cloud. No API keys. No cost per run. Just private, local AI.
 
 [![Download on the App Store](https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/us/app/voice-blogger/id6777303710)
 &nbsp;
-[![iOS 17+](https://img.shields.io/badge/iOS-17%2B-black?style=for-the-badge&logo=apple)](https://apps.apple.com/us/app/voice-blogger/id6777303710)
+[![iOS 18+](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple)](https://apps.apple.com/us/app/voice-blogger/id6777303710)
 &nbsp;
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-green?style=for-the-badge)](LICENSE)
 
@@ -146,7 +146,7 @@ See [PrivacyPolicy.md](PrivacyPolicy.md) for the full privacy policy.
 
 | Platform | Requirement |
 |---|---|
-| **iOS App** | iPhone with iOS 17+, ~2 GB free storage (for models) |
+| **iOS App** | iPhone with iOS 18+, ~2 GB free storage (for models) |
 | **CLI Tool** | Apple Silicon Mac (M1/M2/M3/M4), Python 3.10+, Ollama |
 | **Android App** | Android 12+ (beta) |
 

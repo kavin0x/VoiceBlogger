@@ -1,9 +1,6 @@
 import SwiftUI
 import SwiftData
 
-/*
- hi :)
- */
 @main
 struct VoiceBloggerApp: App {
     @State private var appState = AppState()
@@ -42,18 +39,20 @@ struct VoiceBloggerApp: App {
                     // Skip model gating entirely during UI tests so views are reachable
                     // without downloading ~2.5 GB of models on every test run.
                     guard ProcessInfo.processInfo.environment["UI_TESTING"] == nil else { return }
-                    await downloadManager.warmWhisper()
+                    // validatePersistedModelReadiness heals UserDefaults from actual disk state,
+                    // so models already on disk are recognized even after an app update that
+                    // would otherwise clear the ready flags and force a spurious re-download.
+                    downloadManager.validatePersistedModelReadiness()
                     if onboardingComplete && !downloadManager.allModelsReady {
                         appState.navigateTo(.modelDownload)
+                        downloadManager.continuePendingDownloadIfNeeded()
+                    } else if onboardingComplete {
+                        await downloadManager.warmWhisper()
                     }
                 }
         }
 
         .modelContainer(sharedModelContainer)
-
-        /*
-         bye :)
-         */
     }
 
 }

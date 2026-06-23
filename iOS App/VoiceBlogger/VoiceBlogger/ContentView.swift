@@ -12,6 +12,17 @@ struct ContentView: View {
                 stageView
             }
         }
+        .onOpenURL { url in
+            guard url.scheme == "voiceblogger", url.host == "activity" else { return }
+            switch url.lastPathComponent {
+            case VoiceBloggerActivityAttributes.ActivityKind.recording.rawValue:
+                appState.navigateTo(.recording)
+            case VoiceBloggerActivityAttributes.ActivityKind.downloading.rawValue:
+                appState.navigateTo(.modelDownload)
+            default:
+                break
+            }
+        }
         .alert("Error", isPresented: Binding(
             get: { appState.showError },
             set: { appState.showError = $0 }

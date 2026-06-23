@@ -7,15 +7,15 @@ enum SchemaV1: VersionedSchema {
 
     @Model
     final class BlogPost {
-        var id: UUID
-        var title: String
-        var transcript: String
-        var blogContent: String
-        var instagramCaptions: String
-        var linkedinPost: String
+        var id: UUID = UUID()
+        var title: String = ""
+        var transcript: String = ""
+        var blogContent: String = ""
+        var instagramCaptions: String = ""
+        var linkedinPost: String = ""
         var audioFilename: String?
-        var createdAt: Date
-        var duration: TimeInterval
+        var createdAt: Date = Date()
+        var duration: TimeInterval = 0
 
         init(
             title: String = "",
