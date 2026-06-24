@@ -1,6 +1,21 @@
 import SwiftUI
 import SwiftData
 
+private func applyDataProtection(to storeURL: URL) {
+    let fm = FileManager.default
+    // SQLite creates three files: the main store, a WAL journal, and a shared-memory file.
+    // Protect all three so no file can be read while the device is locked.
+    for suffix in ["", "-wal", "-shm"] {
+        let fileURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + suffix)
+        guard fm.fileExists(atPath: fileURL.path) else { continue }
+        try? fm.setAttributes(
+            [.protectionKey: FileProtectionType.complete],
+            ofItemAtPath: fileURL.path
+        )
+    }
+}
+
 @main
 struct VoiceBloggerApp: App {
     @State private var appState = AppState()
@@ -15,7 +30,9 @@ struct VoiceBloggerApp: App {
         do {
             // Primary path: staged migration for stores that carry version metadata
             // (any store created after this versioning was introduced).
-            return try ModelContainer(for: schema, migrationPlan: AppMigrationPlan.self, configurations: [config])
+            let container = try ModelContainer(for: schema, migrationPlan: AppMigrationPlan.self, configurations: [config])
+            applyDataProtection(to: storeURL)
+            return container
         } catch {
             // Fallback: the store predates versioning and has no version fingerprint,
             // so staged migration can't identify the starting version. CoreData's
@@ -23,7 +40,9 @@ struct VoiceBloggerApp: App {
             // mapping from the stored model hash and fills new non-optional columns
             // using their inline property defaults (e.g. linkedinPost = "").
             do {
-                return try ModelContainer(for: schema, configurations: [config])
+                let container = try ModelContainer(for: schema, configurations: [config])
+                applyDataProtection(to: storeURL)
+                return container
             } catch let fallbackError {
                 fatalError("Could not create ModelContainer: \(fallbackError)")
             }
