@@ -13,6 +13,8 @@ let kWhisperModelID = "openai_whisper-medium"
 private let kWhisperReadyKey = "whisperModelReady_v4"
 private let kLLMReadyKey = "llmModelReady_v4"
 private let kModelDownloadStartedKey = "modelDownloadStarted_v1"
+private let kWhisperFingerprintKey = "whisperModelFingerprint_v1"
+private let kLLMFingerprintKey = "llmModelFingerprint_v1"
 
 @MainActor
 @Observable
@@ -66,29 +68,45 @@ final class ModelDownloadManager {
         if validationCacheValid && allModelsReady { return }
 
         let whisperDir = Self.localWhisperModelDirectory()
-        if whisperDir != nil {
+        if let whisperDir,
+           ModelIntegrityChecker.verify(directory: whisperDir, storedKey: kWhisperFingerprintKey) {
             if !isWhisperReady {
                 isWhisperReady = true
                 UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
             }
             whisperProgress = 1.0
+        } else if whisperDir != nil {
+            // Directory exists but fingerprint check failed — treat as corrupt and re-download.
+            isWhisperReady = false
+            whisperProgress = 0
+            UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
         } else if isWhisperReady {
             isWhisperReady = false
             whisperProgress = 0
             UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
         }
 
         let llmDir = LLMService.localModelDirectory()
-        if llmDir != nil {
+        if let llmDir,
+           ModelIntegrityChecker.verify(directory: llmDir, storedKey: kLLMFingerprintKey) {
             if !isLLMReady {
                 isLLMReady = true
                 UserDefaults.standard.set(true, forKey: kLLMReadyKey)
             }
             llmProgress = 1.0
+        } else if llmDir != nil {
+            // Directory exists but fingerprint check failed — treat as corrupt and re-download.
+            isLLMReady = false
+            llmProgress = 0
+            UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
         } else if isLLMReady {
             isLLMReady = false
             llmProgress = 0
             UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
         }
 
         if allModelsReady {
@@ -379,8 +397,10 @@ final class ModelDownloadManager {
             // If the model directory already exists (e.g. retry after a partial download),
             // skip the network download entirely and mark ready immediately.
             if let existingDir = Self.localWhisperModelDirectory() {
-                _ = existingDir
                 whisperProgress = 1.0
+                if let fp = ModelIntegrityChecker.fingerprint(of: existingDir) {
+                    ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
+                }
                 isWhisperReady = true
                 UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
                 return
@@ -419,6 +439,10 @@ final class ModelDownloadManager {
             // Files are on disk — mark ready. warmWhisper() loads CoreML models lazily
             // when the user reaches the recording screen, so setup completes sooner.
             whisperProgress = 1.0
+            if let dir = Self.localWhisperModelDirectory(),
+               let fp = ModelIntegrityChecker.fingerprint(of: dir) {
+                ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
+            }
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
         } catch is CancellationError {
@@ -525,6 +549,10 @@ final class ModelDownloadManager {
             guard downloadRunID == runID, !Task.isCancelled else { return }
             llmService = service
             mlxWasInitializedThisSession = true
+            if let dir = LLMService.localModelDirectory(),
+               let fp = ModelIntegrityChecker.fingerprint(of: dir) {
+                ModelIntegrityChecker.store(fingerprint: fp, forKey: kLLMFingerprintKey)
+            }
             llmProgress = 1.0
             isLLMReady = true
             UserDefaults.standard.set(true, forKey: kLLMReadyKey)
@@ -642,6 +670,8 @@ final class ModelDownloadManager {
         UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
         UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
         UserDefaults.standard.removeObject(forKey: kModelDownloadStartedKey)
+        ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
+        ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
         isWhisperReady = false
         isLLMReady = false
         whisperProgress = 0
