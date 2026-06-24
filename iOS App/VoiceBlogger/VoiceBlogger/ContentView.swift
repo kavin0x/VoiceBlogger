@@ -13,6 +13,9 @@ struct ContentView: View {
                 stageView
             }
         }
+        // Security: Custom URL schemes (voiceblogger://) can be hijacked by any app declaring the same scheme.
+        // This is accepted since no sensitive data is transmitted via URL. Migration path: use Universal Links
+        // (HTTPS-based, cryptographically verified via apple-app-site-association hosted on the server).
         .onOpenURL { url in
             guard url.scheme == "voiceblogger", url.host == "activity" else { return }
             switch url.lastPathComponent {
