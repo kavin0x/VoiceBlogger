@@ -14,6 +14,21 @@ enum TranscriptionProgressPhase: String, Sendable {
     case finishing
 }
 
+/// The result of a Whisper transcription pass.
+struct SpeakerAnnotatedTranscript: Sendable {
+    /// Cleaned flat transcript (control tokens and noise annotations removed).
+    let text: String
+    /// Reserved for future diarization-backed speaker labels.
+    /// Pause-based turn splitting is intentionally not exposed as speaker attribution.
+    let speakerAnnotatedText: String?
+    /// 0 = only noise/silence detected, 1 = speech detected. Values above 1 are reserved
+    /// for future diarization-backed speaker recognition.
+    let detectedSpeakerCount: Int
+
+    /// The best text to show the user: speaker-annotated when available, otherwise flat.
+    var displayText: String { speakerAnnotatedText ?? text }
+}
+
 // WhisperKit is open class without Sendable; @unchecked is safe here because
 // WhisperKit is only ever accessed from a single Task at a time in this service.
 final class TranscriptionService: @unchecked Sendable {
@@ -104,7 +119,7 @@ final class TranscriptionService: @unchecked Sendable {
         mode: TranscriptionMode,
         onProgress: (@Sendable (TranscriptionProgressPhase) -> Void)? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil
-    ) async throws -> String {
+    ) async throws -> SpeakerAnnotatedTranscript {
         guard let whisperKit else {
             throw TranscriptionError.notInitialized
         }
@@ -118,7 +133,8 @@ final class TranscriptionService: @unchecked Sendable {
             // With usePrefillPrompt: true and no explicit language, WhisperKit primes the
             // decoder with the device locale (often English), causing Whisper to output
             // "[Speaking in a foreign language]" instead of transcribing multilingual audio.
-            // VAD chunking skips silent segments, speeding up transcription proportionally.
+            // Avoid VAD chunking for saved recordings. It is faster, but it can cut off
+            // conversational context and worsen accuracy around short replies or pauses.
             options = DecodingOptions(
                 task: .transcribe,
                 language: language,
@@ -126,7 +142,8 @@ final class TranscriptionService: @unchecked Sendable {
                 usePrefillPrompt: language != nil,
                 suppressBlank: true,
                 suppressTokens: suppressTokens,
-                chunkingStrategy: .vad
+                noSpeechThreshold: 0.6,
+                chunkingStrategy: ChunkingStrategy.none
             )
         case .translate:
             options = DecodingOptions(
@@ -135,7 +152,8 @@ final class TranscriptionService: @unchecked Sendable {
                 usePrefillPrompt: true,
                 suppressBlank: true,
                 suppressTokens: suppressTokens,
-                chunkingStrategy: .vad
+                noSpeechThreshold: 0.6,
+                chunkingStrategy: ChunkingStrategy.none
             )
         }
 
@@ -164,11 +182,32 @@ final class TranscriptionService: @unchecked Sendable {
                 return true
             }
         )
-        let finalText = Self.filterTokens(results.map { $0.text }.joined(separator: " "))
-        guard !finalText.isEmpty else {
-            throw TranscriptionError.emptyResult
+        let rawJoined = results.map { $0.text }.joined(separator: " ")
+        let finalText = Self.filterTokens(rawJoined)
+        // If annotation filtering removed everything (e.g. Whisper tagged the entire
+        // recording as [singing] or [music] due to background noise), fall back to the
+        // control-token-stripped raw text so we never silently discard real speech.
+        let cleanedText: String
+        if !finalText.isEmpty {
+            cleanedText = finalText
+        } else {
+            let rawFallback = Self.stripControlTokens(rawJoined)
+            guard !rawFallback.isEmpty else {
+                throw TranscriptionError.emptyResult
+            }
+            cleanedText = rawFallback
         }
-        return finalText
+
+        // Count whether speech was detected without inventing speaker labels. WhisperKit's
+        // segments do not identify speakers, and pause-based alternation caused false
+        // attribution in transcripts and generated notes.
+        let allSegments = results.flatMap { $0.segments }
+        let hasSpeech = Self.containsSpeech(allSegments)
+        return SpeakerAnnotatedTranscript(
+            text: cleanedText,
+            speakerAnnotatedText: nil,
+            detectedSpeakerCount: hasSpeech ? 1 : 0
+        )
     }
 
     private func validateAudioFile(at url: URL) throws {
@@ -195,13 +234,15 @@ final class TranscriptionService: @unchecked Sendable {
 
     private static func nonSpeechAnnotationTokens(for tokenizer: (any WhisperTokenizer)?) -> [Int] {
         guard let tokenizer else { return [] }
+        // Only suppress tokens for noise/non-content events.
+        // Music notes, [Music], and [Singing] are intentionally excluded so that
+        // Whisper can transcribe sung audio rather than skipping those segments.
         let candidates = [
-            "*", " *", "♪", " ♪", "♫", " ♫", "♬", " ♬", "♩", " ♩",
-            "[Music]", "[music]", "(Music)", "(music)",
-            "[Singing]", "[singing]", "(Singing)", "(singing)",
-            "*Singing*", " *Singing*", "*singing*", " *singing*",
             "[Applause]", "[applause]", "(Applause)", "(applause)",
-            "[Laughter]", "[laughter]", "(Laughter)", "(laughter)"
+            "[Laughter]", "[laughter]", "(Laughter)", "(laughter)",
+            "[Inaudible]", "[inaudible]", "(Inaudible)", "(inaudible)",
+            "[Silence]", "[silence]", "(Silence)", "(silence)",
+            "[Noise]", "[noise]", "(Noise)", "(noise)"
         ]
         let tokens = candidates.compactMap { candidate -> Int? in
             let encoded = tokenizer.encode(text: candidate)
@@ -212,14 +253,17 @@ final class TranscriptionService: @unchecked Sendable {
 
     // nonisolated(unsafe): immutable after init, Sendable types - safe to read from any context.
     // (Suppresses a Swift 6 strict-concurrency warning on static properties of @unchecked Sendable classes.)
-    private static let _tokenFilterRegex = try! NSRegularExpression(pattern: "<\\|[^|>]+\\|>")
-    private static let _nonSpeechAnnotationRegex = try! NSRegularExpression(
-        pattern: #"(?i)(?:\*\s*(?:singing|music|applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\*|\[\s*(?:singing|music|applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\]|\(\s*(?:singing|music|applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\))"#
+    nonisolated private static let _tokenFilterRegex = try! NSRegularExpression(pattern: "<\\|[^|>]+\\|>")
+    nonisolated private static let _nonSpeechAnnotationRegex = try! NSRegularExpression(
+        // Strips only genuine noise/non-content annotations.
+        // singing and music are intentionally excluded so that Whisper's lyric
+        // transcripts (e.g. "♪ Hello, it's me ♪" or "[Music]") are preserved.
+        pattern: #"(?i)(?:\*\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\*|\[\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\]|\(\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\))"#
     )
-    private static let _extraWhitespaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
+    nonisolated private static let _extraWhitespaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
     // Whisper emits this literal when it detects a language mismatch (e.g. audio is non-English
     // but the decoder was primed with an English prefill token).
-    private static let _foreignLanguagePlaceholder = "[Speaking in a foreign language]"
+    nonisolated private static let _foreignLanguagePlaceholder = "[Speaking in a foreign language]"
 
     // Strip WhisperKit control tokens like <|startoftranscript|>, <|en|>, <|0.00|>, etc.,
     // plus non-speech placeholders emitted when Whisper chooses an annotation over speech.
@@ -232,6 +276,37 @@ final class TranscriptionService: @unchecked Sendable {
         let whitespaceRange = NSRange(withoutAnnotations.startIndex..., in: withoutAnnotations)
         return _extraWhitespaceRegex.stringByReplacingMatches(in: withoutAnnotations, range: whitespaceRange, withTemplate: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // Strips only the angle-bracket control tokens (e.g. <|startoftranscript|>, <|en|>, <|0.00|>)
+    // and the foreign-language placeholder, but leaves annotation phrases like [singing] intact.
+    // Used as a fallback when full filterTokens() produces an empty string so that background
+    // music or singing does not cause a wholesale rejection of an otherwise valid transcript.
+    nonisolated static func stripControlTokens(_ text: String) -> String {
+        let range = NSRange(text.startIndex..., in: text)
+        let withoutTokens = _tokenFilterRegex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
+            .replacingOccurrences(of: _foreignLanguagePlaceholder, with: "")
+        let wsRange = NSRange(withoutTokens.startIndex..., in: withoutTokens)
+        return _extraWhitespaceRegex.stringByReplacingMatches(in: withoutTokens, range: wsRange, withTemplate: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Speech detection
+
+    /// Log-probability threshold below which a segment is treated as noise/non-speech.
+    /// Whisper assigns avgLogprob close to 0 for confident speech; values below -1.2 typically
+    /// indicate background noise, music, or hallucinated filler rather than real words.
+    nonisolated private static let noiseProbThreshold: Float = -1.2
+
+    /// Returns true when Whisper produced at least one confident speech segment.
+    nonisolated static func containsSpeech(
+        _ segments: [TranscriptionSegment]
+    ) -> Bool {
+        segments.contains { segment in
+            guard segment.avgLogprob >= noiseProbThreshold else { return false }
+            let cleaned = filterTokens(segment.text)
+            return !cleaned.isEmpty
+        }
     }
 }
 

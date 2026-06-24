@@ -20,6 +20,7 @@ final class AudioRecorder: NSObject {
     // Tracks an interrupted recording that hasn't been claimed by the caller
     private var hasUnclaimedInterruptedRecording = false
     @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private let liveActivity = LiveActivityCoordinator()
 
     override init() {
         super.init()
@@ -54,13 +55,15 @@ final class AudioRecorder: NSObject {
 
         let recordingsDir = URL.recordingsDirectory
         try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
-        let tempURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".m4a")
+        let tempURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".caf")
 
         let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 16000.0,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false
         ]
 
         try await activateRecordingSession()
@@ -86,6 +89,7 @@ final class AudioRecorder: NSObject {
         duration = 0
 
         startTimers()
+        liveActivity.startRecording(startedAt: recordingStartTime ?? .now)
     }
 
     func stopRecording() -> URL? {
@@ -94,6 +98,7 @@ final class AudioRecorder: NSObject {
         isRecording = false
         hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
+        liveActivity.endRecording()
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
         let url = currentAudioURL
         currentAudioURL = nil
@@ -109,6 +114,7 @@ final class AudioRecorder: NSObject {
         duration = 0
         hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
+        liveActivity.endRecording()
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
     }
 
@@ -120,10 +126,11 @@ final class AudioRecorder: NSObject {
                 do {
                     let session = AVAudioSession.sharedInstance()
                     try session.setCategory(
-                        .playAndRecord,
-                        mode: .default,
-                        options: [.allowBluetoothHFP, .defaultToSpeaker]
+                        .record,
+                        mode: .measurement,
+                        options: [.allowBluetoothHFP]
                     )
+                    try session.setPreferredSampleRate(16000)
                     try session.setActive(true)
                     continuation.resume()
                 } catch {
@@ -143,7 +150,8 @@ final class AudioRecorder: NSObject {
             MainActor.assumeIsolated { self?.handleInterruption(notification) }
         }
 
-        // Stop UI-only level updates in the background. The recorder continues writing audio.
+        // Stop level updates in the background. The recorder continues writing audio.
+        // The live activity waveform freezes while backgrounded; its elapsed timer keeps running.
         let backgroundObs = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
@@ -154,7 +162,7 @@ final class AudioRecorder: NSObject {
             }
         }
 
-        // Restart UI-only level updates when returning to foreground.
+        // Restart level updates when returning to foreground.
         let foregroundObs = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
@@ -176,12 +184,20 @@ final class AudioRecorder: NSObject {
         switch type {
         case .began:
             guard isRecording else { return }
+            // Screen lock can report a .began interruption; ignore it so background recording
+            // continues. Only stop for real interruptions (phone calls, Siri).
+            if let reasonValue = notification.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt,
+               let reason = AVAudioSession.InterruptionReason(rawValue: reasonValue),
+               reason == .appWasSuspended {
+                return
+            }
             stopTimers()
             recorder?.stop()
             isRecording = false
             // Mark the partial file as unclaimed so it can be cleaned up on next startRecording()
             hasUnclaimedInterruptedRecording = currentAudioURL != nil
             audioLevels = Array(repeating: -60, count: 30)
+            liveActivity.endRecording()
         case .ended:
             // Don't auto-resume; let the user explicitly start a new recording
             break

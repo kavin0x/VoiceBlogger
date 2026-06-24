@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UIKit
 
 struct TranscriptionView: View {
     let post: BlogPost
@@ -11,14 +10,6 @@ struct TranscriptionView: View {
     @State private var isTranscribing = false
     @State private var error: String?
     @State private var editableTranscript = ""
-    @State private var transcriptionStatus = "Starting transcription..."
-    @State private var transcriptionTask: Task<Void, Never>?
-    @State private var llmPrewarmTask: Task<Void, Never>?
-    @State private var showAudioShareSheet = false
-    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-    // Reference holder so the background-task expiry closure can cancel the task even though
-    // TranscriptionView is a value type (capturing `self` by value would give a stale copy).
-    @State private var taskHolder = TranscriptionTaskHolder()
 
     var body: some View {
         NavigationStack {
@@ -27,17 +18,14 @@ struct TranscriptionView: View {
                     Section {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text(transcriptionStatus)
+                            Text("Transcribing… Please keep the app open!")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 } else if let error {
                     Section {
                         Text(error).foregroundStyle(.red)
-                        if post.audioFileURL != nil {
-                            Button("Retry Transcription") { runTranscription(resetTranscript: false) }
-                            Button("Share Audio") { showAudioShareSheet = true }
-                        }
+                        Button("Retry") { runTranscription() }
                         Button("Reset & Re-download Models", role: .destructive) {
                             downloadManager.resetDownloads()
                             appState.navigateTo(.modelDownload)
@@ -45,11 +33,12 @@ struct TranscriptionView: View {
                     }
                 }
 
+                // Crash-recovery banner for interrupted transcription
                 if !isTranscribing && post.transcriptionState == .inProgress {
                     Section {
                         Label("Transcription was interrupted", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
-                        Text("VoiceBlogger will retry automatically while this screen is open. You can also keep the partial transcript or share the original audio.")
+                        Text("You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -84,7 +73,7 @@ struct TranscriptionView: View {
                             Button {
                                 generateBlog()
                             } label: {
-                                Text(BlogGenerationHandoff.contentKind(for: editableTranscript).generationActionTitle)
+                                Text("Generate Blog Post")
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
                             .buttonStyle(.borderedProminent)
@@ -96,17 +85,6 @@ struct TranscriptionView: View {
                         .listRowBackground(Color.clear)
                     }
                 }
-
-                if !isTranscribing, post.audioFileURL != nil {
-                    Section {
-                        Button(post.transcript.isEmpty ? "Retry Transcription" : "Re-transcribe") {
-                            runTranscription(resetTranscript: true)
-                        }
-                        Button("Share Audio") {
-                            showAudioShareSheet = true
-                        }
-                    }
-                }
             }
             .navigationTitle("Transcription")
             .navigationBarTitleDisplayMode(.inline)
@@ -116,179 +94,73 @@ struct TranscriptionView: View {
                         appState.navigateTo(.recording)
                     }
                 }
-            }
-            .sheet(isPresented: $showAudioShareSheet) {
-                if let audioURL = post.audioFileURL {
-                    ShareSheet(items: [audioURL])
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !isTranscribing && post.audioFileURL != nil &&
+                        (post.transcriptionState != .untranscribed || !post.transcript.isEmpty) {
+                        Button("Re-transcribe") {
+                            post.transcript = ""
+                            editableTranscript = ""
+                            post.detectedSpeakerCount = 0
+                            post.transcriptionState = .untranscribed
+                            runTranscription()
+                        }
+                    }
                 }
             }
             .onAppear {
                 editableTranscript = post.transcript
             }
             .onDisappear {
-                // Cancel any running transcription so it doesn't mutate downloadManager
-                // (setting whisperKit = nil) after the user navigates to a different view
-                // that may have already started a fresh transcription with the same instance.
-                transcriptionTask?.cancel()
-                transcriptionTask = nil
-                // Cancel LLM pre-warm — if the user navigated away without generating,
-                // the next view manages its own LLM lifecycle.
-                llmPrewarmTask?.cancel()
-                llmPrewarmTask = nil
-                // Background task and idle timer are cleaned up by the task's completion
-                // handler or expiry handler; no need to touch them here.
                 if !isTranscribing {
                     saveEditedTranscript()
                 }
             }
             .task {
-                if post.transcriptionState == .untranscribed || post.transcriptionState == .inProgress {
-                    runTranscription(resetTranscript: false)
+                if post.transcriptionState == .untranscribed {
+                    runTranscription()
                 }
             }
         }
     }
 
-    private func runTranscription(resetTranscript: Bool) {
+    private func runTranscription() {
         guard let audioURL = post.audioFileURL else {
-            error = TranscriptionError.missingAudio.localizedDescription
-            post.transcriptionState = .untranscribed
-            try? modelContext.save()
+            error = "Audio file not found. The recording may have been deleted."
             return
         }
-
-        // Cancel any in-flight LLM pre-warm — it holds llmLoadTask, which would block
-        // ensureWhisperWarm() from loading Whisper for the new transcription.
-        llmPrewarmTask?.cancel()
-        llmPrewarmTask = nil
-        downloadManager.releaseLLMService()
-        transcriptionTask?.cancel()
-        taskHolder.task = nil
-        if resetTranscript {
-            post.transcript = ""
-            editableTranscript = ""
-        }
         isTranscribing = true
-        transcriptionStatus = ""
         error = nil
         post.transcriptionState = .inProgress
-        try? modelContext.save()
 
-        // Keep screen on so the app doesn't suspend mid-transcription.
-        UIApplication.shared.isIdleTimerDisabled = true
-
-        // Request background execution time so iOS doesn't kill us if the user
-        // switches apps briefly during the (potentially multi-minute) Whisper run.
-        // Capture taskHolder (reference type) so the expiry closure sees the live task.
-        let holder = taskHolder
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "Transcription") { [holder] in
-            // Expiry handler: iOS is about to suspend. Cancel gracefully.
-            holder.task?.cancel()
-            holder.task = nil
-        }
-
-        let task = Task {
-            defer {
-                isTranscribing = false
-                endBackgroundTask()
-                UIApplication.shared.isIdleTimerDisabled = false
-                holder.task = nil
-            }
-            let progressMonitor = TranscriptionProgressMonitor()
+        Task {
             do {
-                await downloadManager.ensureWhisperWarm()
                 let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
-                let finalText = try await transcribeWithWatchdog(
-                    service: service,
-                    audioURL: audioURL,
-                    progressMonitor: progressMonitor
-                )
-                guard !Task.isCancelled else {
-                    await service.cleanup()
-                    return
-                }
-
-                // Keep whisperKit alive — the increased-memory-limit entitlement allows
-                // Whisper and the LLM to coexist in RAM, so there's no reason to unload.
-                // Pre-warm the LLM so it's ready if the user taps Generate.
-                llmPrewarmTask = Task { try? await downloadManager.loadedLLMService() }
-                post.transcript = finalText
-                editableTranscript = finalText
-                post.transcriptionState = .complete
-                try? modelContext.save()
-            } catch is CancellationError {
-                // Task was cancelled (e.g. view disappeared); leave .inProgress for recovery.
-            } catch {
-                self.error = error.localizedDescription
-                post.transcriptionState = post.transcript.isEmpty ? .untranscribed : .inProgress
-                try? modelContext.save()
-            }
-        }
-        taskHolder.task = task
-        transcriptionTask = task
-    }
-
-    private func endBackgroundTask() {
-        guard backgroundTaskID != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(backgroundTaskID)
-        backgroundTaskID = .invalid
-    }
-
-    private func transcribeWithWatchdog(
-        service: TranscriptionService,
-        audioURL: URL,
-        progressMonitor: TranscriptionProgressMonitor
-    ) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask {
-                try await service.transcribe(
+                let finalTranscript = try await service.transcribe(
                     audioURL: audioURL,
                     mode: .transcribe(language: nil),
-                    onProgress: { phase in
-                        progressMonitor.markProgress()
-                        Task { @MainActor in
-                            transcriptionStatus = statusText(for: phase)
-                        }
-                    },
                     onPartial: { partial in
-                        progressMonitor.markProgress()
                         Task { @MainActor in
                             post.transcript = partial
                             editableTranscript = partial
                         }
                     }
                 )
-            }
-
-            group.addTask {
-                while !Task.isCancelled {
-                    try await Task.sleep(for: .seconds(60))
-                    // 10 minutes without any progress callback from WhisperKit = genuinely stalled.
-                    // whisper-medium can legitimately take several minutes on long audio segments
-                    // without emitting a partial result, so 3 minutes was too aggressive.
-                    if await progressMonitor.secondsSinceProgress() >= 600 {
-                        throw TranscriptionError.stalled
-                    }
+                // Free WhisperKit memory before any later LLM generation to prevent OOM.
+                await service.cleanup()
+                downloadManager.whisperKit = nil
+                Task {
+                    await downloadManager.warmWhisper()
                 }
-                throw CancellationError()
+                post.transcript = finalTranscript.displayText
+                editableTranscript = finalTranscript.displayText
+                post.detectedSpeakerCount = finalTranscript.detectedSpeakerCount
+                post.transcriptionState = .complete
+                try? modelContext.save()
+            } catch {
+                self.error = error.localizedDescription
+                // Leave state as .inProgress so the recovery banner shows on next open
             }
-
-            guard let result = try await group.next() else {
-                throw TranscriptionError.stalled
-            }
-            group.cancelAll()
-            return result
-        }
-    }
-
-    private func statusText(for phase: TranscriptionProgressPhase) -> String {
-        switch phase {
-        case .loadingAudio:
-            return "Loading recording..."
-        case .transcribing:
-            return "Transcribing... Keep VoiceBlogger in the foreground for best results."
-        case .finishing:
-            return "Finishing transcript..."
+            isTranscribing = false
         }
     }
 
@@ -297,6 +169,7 @@ struct TranscriptionView: View {
         guard transcript != post.transcript else { return }
         editableTranscript = transcript
         post.transcript = transcript
+        post.detectedSpeakerCount = transcript.isEmpty ? 0 : 1
         post.transcriptionState = transcript.isEmpty ? .untranscribed : .complete
         try? modelContext.save()
     }
@@ -311,30 +184,5 @@ struct TranscriptionView: View {
 
         saveEditedTranscript()
         appState.navigateTo(.preparingBlog(postID: post.id))
-    }
-}
-
-// Reference type so the UIBackgroundTask expiry closure can cancel the task even though
-// TranscriptionView is a value type (a struct). @State wraps this in reference storage.
-// All accesses happen on the main thread (view body + background-task expiry callback).
-private final class TranscriptionTaskHolder: @unchecked Sendable {
-    var task: Task<Void, Never>?
-}
-
-private final class TranscriptionProgressMonitor: @unchecked Sendable {
-    private let lock = NSLock()
-    private var lastProgress = Date.now
-
-    func markProgress() {
-        lock.lock()
-        lastProgress = .now
-        lock.unlock()
-    }
-
-    func secondsSinceProgress() -> TimeInterval {
-        lock.lock()
-        let seconds = Date.now.timeIntervalSince(lastProgress)
-        lock.unlock()
-        return seconds
     }
 }

@@ -14,26 +14,9 @@ final class LiveActivityCoordinator {
             detail: "Voice Blogger",
             progress: nil,
             startedAt: startedAt,
-            symbolName: "mic.fill",
-            audioLevels: []
+            symbolName: "mic.fill"
         )
         startOrUpdate(kind: .recording, state: state, relevanceScore: 100)
-    }
-
-    func updateRecordingLevels(_ levels: [Float]) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        guard let activity = activity(for: .recording) else { return }
-        // Downsample to 20 bars — enough for a readable waveform without bloating the payload.
-        let downsampled = stride(from: 0, to: levels.count, by: max(1, levels.count / 20)).map { levels[$0] }
-        let state = VoiceBloggerActivityAttributes.ContentState(
-            title: "Recording",
-            detail: "Voice Blogger",
-            progress: nil,
-            startedAt: activity.content.state.startedAt,
-            symbolName: "mic.fill",
-            audioLevels: downsampled
-        )
-        update(activity, state: state, relevanceScore: 100)
     }
 
     func endRecording() {
@@ -42,8 +25,7 @@ final class LiveActivityCoordinator {
             detail: "Ready to transcribe",
             progress: nil,
             startedAt: nil,
-            symbolName: "checkmark.circle.fill",
-            audioLevels: []
+            symbolName: "checkmark.circle.fill"
         )
         end(kind: .recording, state: state)
     }
@@ -60,8 +42,7 @@ final class LiveActivityCoordinator {
             detail: detail,
             progress: min(max(progress, 0), 1),
             startedAt: nil,
-            symbolName: "arrow.down.circle.fill",
-            audioLevels: []
+            symbolName: "arrow.down.circle.fill"
         )
         startOrUpdate(kind: .downloading, state: state, relevanceScore: 80)
     }
@@ -72,8 +53,7 @@ final class LiveActivityCoordinator {
             detail: isComplete ? "Voice Blogger works offline" : "Open the app to resume",
             progress: isComplete ? 1 : nil,
             startedAt: nil,
-            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle.fill",
-            audioLevels: []
+            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle.fill"
         )
         end(kind: .downloading, state: state)
     }

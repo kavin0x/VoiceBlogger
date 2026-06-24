@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 struct ContentView: View {
     @Environment(AppState.self) var appState
+    @Environment(\.modelContext) private var modelContext
     @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     var body: some View {
@@ -22,6 +23,9 @@ struct ContentView: View {
             default:
                 break
             }
+        }
+        .task {
+            await migrateLegacyStoreIfNeeded(into: modelContext)
         }
         .alert("Error", isPresented: Binding(
             get: { appState.showError },

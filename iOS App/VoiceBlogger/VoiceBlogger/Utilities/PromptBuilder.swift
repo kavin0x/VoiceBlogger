@@ -83,11 +83,11 @@ enum PromptBuilder {
         ]
     }
 
-    nonisolated static func synthesisMessages(from summaries: [String], contentKind: GeneratedContentKind) -> [[String: String]] {
+    nonisolated static func synthesisMessages(from summaries: [String], contentKind: GeneratedContentKind, isSpeakerAnnotated: Bool = false) -> [[String: String]] {
         let numbered = summaries.enumerated()
             .map { "[\($0.offset + 1)]\n\($0.element)" }
             .joined(separator: "\n\n")
-        let system = systemPrompt(for: contentKind)
+        let system = systemPrompt(for: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)
         let user = """
         Create \(contentKind.displayName.lowercased()) from these key points extracted from a voice recording:
 
@@ -101,19 +101,25 @@ enum PromptBuilder {
 
     // MARK: - Single-pass prompts
 
-    static func contentMessages(transcript: String, contentKind: GeneratedContentKind) -> [[String: String]] {
+    static func contentMessages(transcript: String, contentKind: GeneratedContentKind, isSpeakerAnnotated: Bool = false) -> [[String: String]] {
         let wordCount = transcript.split(separator: " ").count
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))
             : transcript
+        let request = switch contentKind {
+        case .blogPost:
+            "Create the most useful written output from this voice transcript (~\(wordCount) words). Use common sense to decide whether it should read as a blog post, meeting notes, or personal notes. Match the structure and length to the actual content."
+        case .meetingNotes, .notes:
+            "Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Match the structure and length to the actual content."
+        }
         let user = """
-        Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Match the structure and length to the actual content.
+        \(request)
 
         Transcript:
         \(safeTranscript)
         """
         return [
-            ["role": "system", "content": systemPrompt(for: contentKind)],
+            ["role": "system", "content": systemPrompt(for: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)],
             ["role": "user", "content": user]
         ]
     }
@@ -226,38 +232,67 @@ enum PromptBuilder {
 
     // MARK: - Utilities
 
-    nonisolated private static func systemPrompt(for contentKind: GeneratedContentKind) -> String {
+    nonisolated private static func systemPrompt(for contentKind: GeneratedContentKind, isSpeakerAnnotated: Bool = false) -> String {
+        let markdownContract = """
+        MARKDOWN OUTPUT CONTRACT:
+        - Return valid Markdown as the final answer. Do not wrap the whole response in a code fence.
+        - Prefer Markdown structure over long plain-text paragraphs whenever it improves scanning.
+        - Use blank lines between Markdown blocks so the renderer can parse headings, lists, quotes, tables, and code blocks cleanly.
+        - Use `#`, `##`, and `###` headings for clear hierarchy; use no more than one `#` title.
+        - Use **bold** for important names, decisions, claims, and takeaways; use *italics* only for light emphasis.
+        - Use `- ` bullets for unordered ideas, `1. ` lists for sequences, `- [ ]` checkboxes for tasks, `>` blockquotes for notable spoken lines or callouts, tables for comparisons, and fenced code blocks for multi-line technical content.
+        - Medium and long outputs should include multiple Markdown features, not just paragraphs with a title.
+        - Do not escape Markdown punctuation such as `#`, `*`, `-`, `>`, or backticks.
+        """
+
         let baseRules = """
         Preserve the speaker's meaning, names, facts, decisions, and constraints exactly.
         Remove only filler words, false starts, repeated phrases, and transcription artifacts.
         Fix punctuation, grammar, and obvious speech-to-text mistakes.
         Do not invent context, advice, claims, dates, owners, or action items.
-        Use simple markdown only. Stop after the final useful line.
+        \(markdownContract)
+        Stop after the final useful line.
         Match output length to input; do not pad or expand thin source material.
         """
 
         switch contentKind {
         case .blogPost:
             return """
-            You turn voice transcripts into readable blog posts only when the transcript contains article-like ideas, stories, opinions, or explanations.
+            You turn voice transcripts into the most useful written format. Default to a readable blog post when the transcript contains article-like ideas, stories, opinions, or explanations, but use common sense and choose notes or meeting notes when the transcript is clearly a capture note, task list, brainstorm, agenda, discussion, or decision record.
             \(baseRules)
+
+            COMMON-SENSE FORMAT SELECTION:
+            - Blog post: use for article-like ideas, personal stories, lessons, opinions, explainers, or publishable narrative material.
+            - Meeting notes: use for agendas, decisions, action items, owners, deadlines, open questions, or multi-speaker discussions.
+            - Personal notes: use for reminders, task lists, brainstorms, drafts, rough captures, or short private notes.
 
             BLOG STRUCTURE:
             - Under 100 input words: write 1-3 short paragraphs, usually with no title.
             - 100-400 input words: write clean prose with minimal headings only if topics clearly shift.
             - Over 400 input words: use one title and section headings if helpful.
-            - Keep the speaker's voice. Do not make meeting minutes or task lists unless the transcript itself asks for that.
+            - Keep the speaker's voice and preserve the transcript's natural intent instead of forcing every input into an article.
+            - Make the post Markdown-rich when there is enough material: title, section headings, bolded takeaways, bullets or numbered lists, blockquotes for memorable lines, tables for comparisons, and `code` spans or fenced code blocks for technical content.
             """
         case .meetingNotes:
+            let speakerGuidance = isSpeakerAnnotated
+                ? """
+
+                SPEAKER ATTRIBUTION:
+                The transcript contains speaker labels in the format `[Speaker 1]: ...`, `[Speaker 2]: ...`.
+                When attributing action items or decisions, use the label (e.g. **Speaker 1**) unless a real name appears in the spoken text.
+                Group discussion points by speaker turn where it adds clarity; do not force attribution where the context is clearly shared.
+                """
+                : ""
             return """
             You turn meeting transcripts into practical meeting notes, not blog posts.
-            \(baseRules)
+            \(baseRules)\(speakerGuidance)
 
             MEETING NOTES STRUCTURE:
             - Start with a concise title if the meeting topic is clear.
             - Include sections only when supported by the transcript: Summary, Decisions, Action Items, Open Questions, Key Discussion Points.
-            - Put action items in a checklist. Include owner and deadline only when spoken; otherwise omit them.
+            - Put action items in a `- [ ]` checklist. Include owner and deadline only when spoken; otherwise omit them.
             - Keep decisions separate from ideas or unresolved discussion.
+            - Use Markdown throughout: `##` for each section heading, **bold** for decisions and owner names, `- [ ]` for action items, `- ` bullets for discussion points, tables for status/owner/deadline summaries when useful, and blockquotes for important verbatim remarks.
             - Do not add narrative polish, hooks, introductions, or conclusions.
             """
         case .notes:
@@ -271,6 +306,7 @@ enum PromptBuilder {
             - Group related ideas under small headings only when there are multiple topics.
             - Preserve rough note intent instead of turning it into an article, essay, or social post.
             - Do not add a title unless it makes the note easier to scan.
+            - Use Markdown wherever it improves scannability: **bold** for key terms, `- ` bullets for lists, `- [ ]` checkboxes for tasks, `###` headings when grouping multiple topics, tables for comparisons, and blockquotes for captured ideas worth preserving.
             """
         }
     }

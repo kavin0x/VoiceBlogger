@@ -224,6 +224,7 @@ final class LLMService: Sendable {
     private func generateContentChunked(
         transcript: String,
         contentKind: GeneratedContentKind,
+        isSpeakerAnnotated: Bool,
         onPhaseChange: (@Sendable (String) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
@@ -247,7 +248,7 @@ final class LLMService: Sendable {
                     try Task.checkCancellation()
                     onPhaseChange?("Writing \(contentKind.displayName.lowercased())...")
 
-                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries, contentKind: contentKind)
+                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)
                     for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800) {
                         try Task.checkCancellation()
                         if case .terminated = continuation.yield(token) { break }
@@ -266,28 +267,32 @@ final class LLMService: Sendable {
     func generateContent(
         transcript: String,
         contentKind: GeneratedContentKind,
+        isSpeakerAnnotated: Bool = false,
         onPhaseChange: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         if PromptBuilder.needsChunking(transcript) {
             return generateContentChunked(
                 transcript: transcript,
                 contentKind: contentKind,
+                isSpeakerAnnotated: isSpeakerAnnotated,
                 onPhaseChange: onPhaseChange
             )
         }
         return generateStream(
-            messages: PromptBuilder.contentMessages(transcript: transcript, contentKind: contentKind),
+            messages: PromptBuilder.contentMessages(transcript: transcript, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated),
             maxTokens: 1800
         )
     }
 
     func generateBlog(
         transcript: String,
+        isSpeakerAnnotated: Bool = false,
         onPhaseChange: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         generateContent(
             transcript: transcript,
             contentKind: .blogPost,
+            isSpeakerAnnotated: isSpeakerAnnotated,
             onPhaseChange: onPhaseChange
         )
     }

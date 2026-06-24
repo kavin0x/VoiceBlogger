@@ -10,7 +10,8 @@ struct VoiceBloggerApp: App {
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([BlogPost.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let storeURL = URL.applicationSupportDirectory.appendingPathComponent("VoiceBlogger-v2.store")
+        let config = ModelConfiguration("VoiceBloggerV2", schema: schema, url: storeURL)
         do {
             // Primary path: staged migration for stores that carry version metadata
             // (any store created after this versioning was introduced).

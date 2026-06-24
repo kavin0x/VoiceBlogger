@@ -13,9 +13,6 @@ nonisolated struct VoiceBloggerActivityAttributes: ActivityAttributes {
         var progress: Double?
         var startedAt: Date?
         var symbolName: String
-        /// Coarse audio levels for the recording waveform (values in -60...0 dB).
-        /// Empty when not recording; the widget falls back to a decorative static waveform.
-        var audioLevels: [Float]
     }
 
     var kind: ActivityKind

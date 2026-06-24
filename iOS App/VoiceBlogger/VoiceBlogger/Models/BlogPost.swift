@@ -19,6 +19,9 @@ final class BlogPost {
     var createdAt: Date = Date()
     var duration: TimeInterval = 0
     var transcriptionState: TranscriptionState? = TranscriptionState.untranscribed
+    /// Number of distinct speakers inferred by heuristic turn-detection during transcription.
+    /// 0 = noise only / not yet transcribed, 1 = solo recording, 2+ = multi-speaker meeting.
+    var detectedSpeakerCount: Int = 0
 
     init(
         title: String = "",
@@ -29,7 +32,8 @@ final class BlogPost {
         audioFilename: String? = nil,
         createdAt: Date = .now,
         duration: TimeInterval = 0,
-        transcriptionState: TranscriptionState? = .untranscribed
+        transcriptionState: TranscriptionState? = .untranscribed,
+        detectedSpeakerCount: Int = 0
     ) {
         self.id = UUID()
         self.title = title
@@ -41,6 +45,7 @@ final class BlogPost {
         self.createdAt = createdAt
         self.duration = duration
         self.transcriptionState = transcriptionState
+        self.detectedSpeakerCount = detectedSpeakerCount
     }
 
     var audioFileURL: URL? {

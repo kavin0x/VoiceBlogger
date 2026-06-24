@@ -442,10 +442,10 @@ final class ModelDownloadManager {
 
             // Before deserializing ~1 GB of weights, verify there is enough free RAM.
             // If Whisper just unloaded, give the OS one reclaim cycle.
-            if !hasAvailableMemory(requiredMB: 700) {
+            if !hasAvailableMemory(requiredMB: 600) {
                 if mlxWasInitializedThisSession { MLX.Memory.clearCache() }
-                try? await Task.sleep(for: .milliseconds(500))
-                if !hasAvailableMemory(requiredMB: 600) {
+                try? await Task.sleep(for: .milliseconds(200))
+                if !hasAvailableMemory(requiredMB: 500) {
                     throw LLMLoadError.insufficientMemory
                 }
             }
@@ -570,7 +570,7 @@ final class ModelDownloadManager {
         // If Whisper was already nil (pre-warm path) or MLX was never initialized, skip
         // the drain sleep to avoid 750 ms of dead time.
         if hadWhisper && mlxWasInitializedThisSession {
-            try? await Task.sleep(for: .milliseconds(750))
+            try? await Task.sleep(for: .milliseconds(400))
             MLX.Memory.clearCache()
             await Task.yield()
         }
@@ -599,13 +599,13 @@ final class ModelDownloadManager {
         // unloads before we begin pulling 1 GB of LLM weights into memory.
         // If we still don't have enough headroom, throw a descriptive error rather
         // than attempting to load and triggering a jetsam OOM kill.
-        if !hasAvailableMemory(requiredMB: 900) {
+        if !hasAvailableMemory(requiredMB: 750) {
             if mlxWasInitializedThisSession {
                 MLX.Memory.clearCache()
             }
             // Give the OS one more reclaim cycle before giving up.
-            try? await Task.sleep(for: .milliseconds(500))
-            if !hasAvailableMemory(requiredMB: 700) {
+            try? await Task.sleep(for: .milliseconds(200))
+            if !hasAvailableMemory(requiredMB: 550) {
                 throw LLMLoadError.insufficientMemory
             }
         }

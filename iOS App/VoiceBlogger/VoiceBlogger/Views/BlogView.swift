@@ -8,6 +8,7 @@ struct BlogView: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
 
     @State private var streamedText = ""
     @State private var isGenerating = false
@@ -21,7 +22,13 @@ struct BlogView: View {
     @State private var editableText = ""
     @State private var generationTask: Task<Void, Never>?
 
-    var contentKind: GeneratedContentKind { BlogGenerationHandoff.contentKind(for: post.transcript) }
+    var contentKind: GeneratedContentKind {
+        BlogGenerationHandoff.contentKind(
+            for: post.transcript,
+            speakerCount: post.detectedSpeakerCount,
+            automaticDetectionEnabled: automaticContentKindDetectionEnabled
+        )
+    }
     var displayText: String { streamedText.isEmpty ? post.blogContent : streamedText }
     var shareText: String { isEditing ? editableText : displayText }
 
@@ -63,10 +70,6 @@ struct BlogView: View {
                                 .frame(minHeight: 400)
                                 .scrollContentBackground(.hidden)
                                 .accessibilityLabel("Generated content")
-                        } else if isGenerating || generationError != nil {
-                            Text(displayText)
-                                .font(.body)
-                                .textSelection(.enabled)
                         } else {
                             MarkdownView(text: displayText)
                                 .textSelection(.enabled)
@@ -252,8 +255,13 @@ struct BlogView: View {
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
-            let detectedKind = BlogGenerationHandoff.contentKind(for: transcript)
-            for try await chunk in service.generateContent(transcript: transcript, contentKind: detectedKind, onPhaseChange: { phase in
+            let detectedKind = BlogGenerationHandoff.contentKind(
+                for: transcript,
+                speakerCount: post.detectedSpeakerCount,
+                automaticDetectionEnabled: automaticContentKindDetectionEnabled
+            )
+            let isSpeakerAnnotated = false
+            for try await chunk in service.generateContent(transcript: transcript, contentKind: detectedKind, isSpeakerAnnotated: isSpeakerAnnotated, onPhaseChange: { phase in
                 Task { @MainActor in generationPhase = phase }
             }) {
                 if Task.isCancelled { return }

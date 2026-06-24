@@ -120,7 +120,7 @@ struct RecordingView: View {
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
                     Menu {
-                        Button("About", systemImage: "info.circle") {
+                        Button("Settings", systemImage: "gearshape") {
                             showAbout = true
                         }
                         Divider()

@@ -87,12 +87,7 @@ struct VoiceBloggerLiveActivityWidget: Widget {
     private func expandedBottom(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
         switch context.attributes.kind {
         case .recording:
-            ActivityWaveformView(
-                levels: context.state.audioLevels.isEmpty ? expandedRecordingLevels : context.state.audioLevels,
-                color: tint(for: context.attributes.kind)
-            )
-            .frame(height: 36)
-            .padding(.top, 4)
+            EmptyView()
         case .downloading:
             VStack(alignment: .leading, spacing: 6) {
                 Text(context.state.detail)
@@ -113,12 +108,9 @@ struct VoiceBloggerLiveActivityWidget: Widget {
     private func compactLeadingStatus(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
         switch context.attributes.kind {
         case .recording:
-            ActivityWaveformView(
-                levels: context.state.audioLevels.isEmpty ? compactRecordingLevels : context.state.audioLevels,
-                color: tint(for: context.attributes.kind),
-                spacing: 1
-            )
-            .frame(width: 24, height: 18)
+            Image(systemName: "mic.fill")
+                .foregroundStyle(tint(for: context.attributes.kind))
+                .font(.caption)
         case .downloading:
             Image(systemName: context.state.symbolName)
                 .foregroundStyle(tint(for: context.attributes.kind))
@@ -145,12 +137,9 @@ struct VoiceBloggerLiveActivityWidget: Widget {
     private func minimalStatus(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
         switch context.attributes.kind {
         case .recording:
-            ActivityWaveformView(
-                levels: context.state.audioLevels.isEmpty ? minimalRecordingLevels : context.state.audioLevels,
-                color: tint(for: context.attributes.kind),
-                spacing: 1
-            )
-            .frame(width: 18, height: 18)
+            Image(systemName: "mic.fill")
+                .foregroundStyle(tint(for: context.attributes.kind))
+                .font(.system(size: 9))
         case .downloading:
             Image(systemName: context.state.symbolName)
                 .foregroundStyle(tint(for: context.attributes.kind))
@@ -173,18 +162,6 @@ struct VoiceBloggerLiveActivityWidget: Widget {
         case .recording: return .red
         case .downloading: return .blue
         }
-    }
-
-    private var expandedRecordingLevels: [Float] {
-        [-44, -26, -37, -18, -31, -12, -29, -22, -8, -34, -16, -27, -20, -35, -14, -24, -40, -19, -30, -11, -28, -23, -36, -15]
-    }
-
-    private var compactRecordingLevels: [Float] {
-        [-34, -16, -27, -10, -24, -18, -31]
-    }
-
-    private var minimalRecordingLevels: [Float] {
-        [-34, -18, -10, -25]
     }
 }
 
@@ -211,19 +188,10 @@ private struct VoiceBloggerLiveActivityContent: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                switch context.attributes.kind {
-                case .recording:
-                    ActivityWaveformView(
-                        levels: context.state.audioLevels.isEmpty ? recordingLevels : context.state.audioLevels,
-                        color: tint
-                    )
-                    .frame(height: 40)
-                    .padding(.top, 2)
-                case .downloading:
-                    if let progress = context.state.progress {
-                        ProgressView(value: progress)
-                            .tint(tint)
-                    }
+                if context.attributes.kind == .downloading, let progress = context.state.progress {
+                    ProgressView(value: progress)
+                        .tint(tint)
+                        .padding(.top, 2)
                 }
             }
         }
@@ -249,10 +217,6 @@ private struct VoiceBloggerLiveActivityContent: View {
         case .recording: return .red
         case .downloading: return .blue
         }
-    }
-
-    private var recordingLevels: [Float] {
-        [-42, -24, -35, -17, -29, -12, -26, -21, -9, -32, -15, -25, -19, -33, -13, -23, -38, -18, -28, -10, -27, -22, -34, -14, -31, -20, -39, -16]
     }
 }
 
@@ -285,38 +249,5 @@ private struct RecordingPulse: View {
                 .foregroundStyle(.white)
         }
         .onAppear { pulsing = isRecording }
-    }
-}
-
-// MARK: - Waveform canvas
-
-private struct ActivityWaveformView: View {
-    let levels: [Float]
-    var color: Color
-    var spacing: CGFloat = 3
-
-    var body: some View {
-        Canvas { context, size in
-            let count = levels.count
-            guard count > 0 else { return }
-
-            let totalSpacing = spacing * CGFloat(count - 1)
-            let barWidth = max(2, (size.width - totalSpacing) / CGFloat(count))
-            let minHeight: CGFloat = min(4, size.height)
-
-            for i in 0..<count {
-                let clamped = Double(max(-60, min(0, levels[i])))
-                let normalized = CGFloat((clamped + 60.0) / 60.0)
-                let barHeight = minHeight + normalized * (size.height - minHeight)
-                let x = CGFloat(i) * (barWidth + spacing)
-                let y = (size.height - barHeight) / 2
-                let path = Path(
-                    roundedRect: CGRect(x: x, y: y, width: barWidth, height: barHeight),
-                    cornerRadius: min(2, barWidth / 2)
-                )
-                context.fill(path, with: .color(color))
-            }
-        }
-        .accessibilityLabel("Recording waveform")
     }
 }

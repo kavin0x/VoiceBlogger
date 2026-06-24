@@ -16,13 +16,35 @@ struct VoiceBloggerTests {
         #expect(BlogGenerationHandoff.preparedTranscript(from: transcript) == "This is ready to become a blog post.")
     }
 
+    @Test func blogGenerationHandoffStripsUnreliableGenericSpeakerLabels() {
+        let transcript = """
+        [Speaker 1]: So, I think we should definitely do this deal for three million dollars.
+        [Speaker 2]: okay let's meet in the middle let's do 2.5 million
+        """
+
+        #expect(BlogGenerationHandoff.preparedTranscript(from: transcript) == """
+        So, I think we should definitely do this deal for three million dollars.
+        okay let's meet in the middle let's do 2.5 million
+        """)
+    }
+
     @Test func blogGenerationHandoffRequiresTranscriptAndIdleState() {
         #expect(BlogGenerationHandoff.canGenerateBlog(from: "Transcript", isBusy: false))
         #expect(!BlogGenerationHandoff.canGenerateBlog(from: "   \n", isBusy: false))
         #expect(!BlogGenerationHandoff.canGenerateBlog(from: "Transcript", isBusy: true))
     }
 
-    @Test func contentKindDetectsMeetingNotes() {
+    @Test func contentKindDefaultsToBlogPostWhenBetaDetectionIsOff() {
+        let transcript = """
+        Product sync meeting. Agenda was onboarding and pricing.
+        We discussed launch blockers and decided to keep the beta invite-only.
+        Action items: Maya follow up with legal by Friday.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .blogPost)
+    }
+
+    @Test func contentKindDetectsMeetingNotesWhenBetaDetectionIsOn() {
         let transcript = """
         Product sync meeting. Agenda was onboarding and pricing.
         We discussed launch blockers and decided to keep the beta invite-only.
@@ -30,7 +52,20 @@ struct VoiceBloggerTests {
         Open question: whether support needs another walkthrough.
         """
 
-        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .meetingNotes)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .meetingNotes)
+    }
+
+    @Test func contentKindDoesNotTrustHeuristicSpeakerCount() {
+        let transcript = """
+        So, I think we should definitely do this deal for three million dollars.
+        okay let's meet in the middle let's do 2.5 million.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(
+            for: transcript,
+            speakerCount: 2,
+            automaticDetectionEnabled: true
+        ) == .blogPost)
     }
 
     @Test func contentKindDetectsRegularNotes() {
@@ -41,13 +76,13 @@ struct VoiceBloggerTests {
         - send Sam the invoice
         """
 
-        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .notes)
     }
 
     @Test func contentKindDetectsShortReminderAsNotes() {
         let transcript = "Remember to send Sam the invoice tomorrow."
 
-        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .notes)
     }
 
     @Test func contentKindDetectsAsteriskBulletsAsNotes() {
@@ -57,7 +92,7 @@ struct VoiceBloggerTests {
         * send Sam the invoice
         """
 
-        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .notes)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .notes)
     }
 
     @Test func contentKindDefaultsArticleLikeTranscriptToBlogPost() {
@@ -66,6 +101,23 @@ struct VoiceBloggerTests {
         """
 
         #expect(BlogGenerationHandoff.contentKind(for: transcript) == .blogPost)
+    }
+
+    @Test func promptBuilderDefaultBlogPromptAllowsCommonSenseFormatSelection() {
+        let messages = PromptBuilder.contentMessages(
+            transcript: "Remember to send Sam the invoice tomorrow.",
+            contentKind: .blogPost
+        )
+        let system = messages.first?["content"] ?? ""
+        let user = messages.dropFirst().first?["content"] ?? ""
+
+        #expect(system.contains("use common sense and choose notes or meeting notes"))
+        #expect(system.contains("preserve the transcript's natural intent"))
+        #expect(system.contains("MARKDOWN OUTPUT CONTRACT"))
+        #expect(system.contains("Return valid Markdown as the final answer"))
+        #expect(system.contains("Medium and long outputs should include multiple Markdown features"))
+        #expect(system.contains("Make the post Markdown-rich"))
+        #expect(user.contains("Use common sense to decide whether it should read as a blog post, meeting notes, or personal notes"))
     }
 
     @Test func promptBuilderRoutesMeetingNotesAwayFromBlogPrompt() {
@@ -212,7 +264,7 @@ struct VoiceBloggerTests {
     }
 
     @Test func transcriptionFilterRemovesNonSpeechAnnotations() {
-        let text = "<|startoftranscript|><|en|><|0.00|> *singing* Today I want to talk about launch notes. [Music] <|endoftext|>"
+        let text = "<|startoftranscript|><|en|><|0.00|> [Noise] Today I want to talk about launch notes. [Laughter] <|endoftext|>"
 
         #expect(TranscriptionService.filterTokens(text) == "Today I want to talk about launch notes.")
     }

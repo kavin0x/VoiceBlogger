@@ -5,6 +5,7 @@ struct BlogListView: View {
     @Environment(AppState.self) var appState
     @Query(sort: \BlogPost.createdAt, order: .reverse) private var posts: [BlogPost]
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
 
     var body: some View {
         NavigationStack {
@@ -25,8 +26,11 @@ struct BlogListView: View {
                                     appState.navigateTo(.transcribing(post: post))
                                 }
                             } label: {
-                                BlogPostRowView(post: post)
-                                    .contentShape(Rectangle())
+                                BlogPostRowView(
+                                    post: post,
+                                    automaticDetectionEnabled: automaticContentKindDetectionEnabled
+                                )
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -58,10 +62,14 @@ struct BlogListView: View {
 
 private struct BlogPostRowView: View {
     let post: BlogPost
+    let automaticDetectionEnabled: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            let contentKind = BlogGenerationHandoff.contentKind(for: post.transcript)
+            let contentKind = BlogGenerationHandoff.contentKind(
+                for: post.transcript,
+                automaticDetectionEnabled: automaticDetectionEnabled
+            )
             Text(post.title.isEmpty ? "Untitled \(contentKind.displayName)" : post.title)
                 .font(.headline)
                 .lineLimit(2)

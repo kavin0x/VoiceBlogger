@@ -1,5 +1,9 @@
 import Foundation
 
+enum BetaFeatureSettings {
+    static let automaticContentKindDetectionKey = "betaAutomaticContentKindDetection"
+}
+
 enum GeneratedContentKind: String, CaseIterable, Sendable {
     case blogPost
     case meetingNotes
@@ -61,7 +65,13 @@ enum GeneratedContentKind: String, CaseIterable, Sendable {
         }
     }
 
-    nonisolated static func detect(from transcript: String) -> GeneratedContentKind {
+    /// Classifies transcript content into the most appropriate output kind.
+    ///
+    /// - Parameters:
+    ///   - transcript: The cleaned transcript text to analyse.
+    ///   - speakerCount: Reserved for future diarization-backed speaker recognition.
+    ///                   Heuristic speaker counts are ignored because they can misattribute speech.
+    nonisolated static func detect(from transcript: String, speakerCount: Int = 0) -> GeneratedContentKind {
         let rawLines = transcript
             .lowercased()
             .components(separatedBy: .newlines)
@@ -81,6 +91,8 @@ enum GeneratedContentKind: String, CaseIterable, Sendable {
         var meetingScore = 0
         var notesScore = 0
         var blogScore = 0
+
+        _ = speakerCount
 
         let meetingPhrases = [
             "meeting", "agenda", "attendees", "action item", "action items", "follow up", "follow-up",
@@ -156,12 +168,27 @@ enum GeneratedContentKind: String, CaseIterable, Sendable {
 }
 
 enum BlogGenerationHandoff {
+    private static let genericSpeakerLabelPattern = #"(?m)^\s*(?:[*_]+\s*)?\[?\s*Speaker\s+\d+\s*\]?\s*:?\s*(?:[*_]+\s*)?"#
+
     static func preparedTranscript(from transcript: String) -> String {
-        transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        transcript
+            .replacingOccurrences(
+                of: genericSpeakerLabelPattern,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func contentKind(for transcript: String) -> GeneratedContentKind {
-        GeneratedContentKind.detect(from: preparedTranscript(from: transcript))
+    static func contentKind(
+        for transcript: String,
+        speakerCount: Int = 0,
+        automaticDetectionEnabled: Bool = false
+    ) -> GeneratedContentKind {
+        guard automaticDetectionEnabled else {
+            return .blogPost
+        }
+        return GeneratedContentKind.detect(from: preparedTranscript(from: transcript), speakerCount: speakerCount)
     }
 
     static func canGenerateBlog(from transcript: String, isBusy: Bool) -> Bool {
