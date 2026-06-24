@@ -54,7 +54,11 @@ final class AudioRecorder: NSObject {
         }
 
         let recordingsDir = URL.recordingsDirectory
-        try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: recordingsDir,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.complete]
+        )
         let tempURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".caf")
 
         let settings: [String: Any] = [
@@ -102,6 +106,12 @@ final class AudioRecorder: NSObject {
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
         let url = currentAudioURL
         currentAudioURL = nil
+        if let url {
+            try? FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.complete],
+                ofItemAtPath: url.path
+            )
+        }
         return url
     }
 
