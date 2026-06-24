@@ -832,8 +832,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = 984ab42f6d6824f17630109537829af26ca47fd6;
 			};
 		};
 		8A34A1212FCBB7D60010F5A2 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
@@ -892,8 +892,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = exactVersion;
+				version = 3.31.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
