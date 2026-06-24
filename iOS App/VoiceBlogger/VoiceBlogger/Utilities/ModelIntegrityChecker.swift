@@ -11,19 +11,33 @@ enum ModelIntegrityChecker {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]
         ) else { return nil }
 
         var entries: [(path: String, size: Int)] = []
         for case let url as URL in enumerator {
-            guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-                  values.isRegularFile == true,
-                  let size = values.fileSize else { continue }
+            guard let values = try? url.resourceValues(
+                forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]
+            ) else { continue }
+
             let relative = url.path.hasPrefix(directory.path)
                 ? String(url.path.dropFirst(directory.path.count))
                 : url.path
-            entries.append((path: relative, size: size))
+
+            if values.isRegularFile == true, let size = values.fileSize {
+                entries.append((path: relative, size: size))
+            } else if values.isSymbolicLink == true {
+                // Resolve the symlink and use the real file's size so HuggingFace Hub
+                // caches (which store files as symlinks into a blobs/ directory) are
+                // included in the fingerprint.
+                let resolved = url.resolvingSymlinksInPath()
+                if let resolvedValues = try? resolved.resourceValues(
+                    forKeys: [.fileSizeKey, .isRegularFileKey]
+                ), resolvedValues.isRegularFile == true, let resolvedSize = resolvedValues.fileSize {
+                    entries.append((path: relative, size: resolvedSize))
+                }
+            }
         }
 
         guard !entries.isEmpty else { return nil }

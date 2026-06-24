@@ -187,6 +187,12 @@ final class ModelDownloadManager {
                 guard let self, self.whisperKit == nil else { return }
                 self.whisperKit = kit
                 self.whisperWarmTask = nil
+                // Store fingerprint here, after loadModels() completes, so any CoreML
+                // compilation artifacts written during loading are included in the baseline.
+                if let dir = Self.localWhisperModelDirectory(),
+                   let fp = ModelIntegrityChecker.fingerprint(of: dir) {
+                    ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
+                }
             }
         }
         whisperWarmTask = task
@@ -397,10 +403,8 @@ final class ModelDownloadManager {
             // If the model directory already exists (e.g. retry after a partial download),
             // skip the network download entirely and mark ready immediately.
             if let existingDir = Self.localWhisperModelDirectory() {
+                _ = existingDir
                 whisperProgress = 1.0
-                if let fp = ModelIntegrityChecker.fingerprint(of: existingDir) {
-                    ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
-                }
                 isWhisperReady = true
                 UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
                 return
@@ -439,10 +443,6 @@ final class ModelDownloadManager {
             // Files are on disk — mark ready. warmWhisper() loads CoreML models lazily
             // when the user reaches the recording screen, so setup completes sooner.
             whisperProgress = 1.0
-            if let dir = Self.localWhisperModelDirectory(),
-               let fp = ModelIntegrityChecker.fingerprint(of: dir) {
-                ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
-            }
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
         } catch is CancellationError {
