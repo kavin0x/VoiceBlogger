@@ -872,30 +872,6 @@
 				version = 0.31.3;
 			};
 		};
-		8AD55690FCBAA01001151C1 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.9.0;
-			};
-		};
-		8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.21.0;
-			};
-		};
-		8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
-			requirement = {
-				kind = exactVersion;
-				version = 3.31.3;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -936,27 +912,27 @@
 		};
 		8AD55693FCBAA01001151C1 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 8AD55690FCBAA01001151C1 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			package = 8A34A11F2FCBB7950010F5A2 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
 			productName = WhisperKit;
 		};
 		8AD55694FCBAA01001151C1 /* MLX */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			package = 8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */;
 			productName = MLX;
 		};
 		8AD55695FCBAA01001151C1 /* MLXNN */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 8AD55691FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			package = 8AB9EBC42FCBBC3500ABF038 /* XCRemoteSwiftPackageReference "mlx-swift" */;
 			productName = MLXNN;
 		};
 		8AD55696FCBAA01001151C1 /* MLXLLM */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			package = 8A34A1212FCBB7D60010F5A2 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLLM;
 		};
 		8AD55697FCBAA01001151C1 /* MLXLMCommon */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 8AD55692FCBAA01001151C1 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			package = 8A34A1212FCBB7D60010F5A2 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
 		};
 /* End XCSwiftPackageProductDependency section */
