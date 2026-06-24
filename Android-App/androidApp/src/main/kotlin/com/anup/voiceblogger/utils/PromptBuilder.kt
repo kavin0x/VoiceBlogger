@@ -7,7 +7,7 @@ object PromptBuilder {
     private const val MAX_LINKEDIN_SUMMARY_CHARS = 2200
     private const val MAX_BLOG_TOKENS = 1800
     private const val MAX_INSTAGRAM_TOKENS = 450
-    private const val MAX_LINKEDIN_TOKENS = 550
+    private const val MAX_LINKEDIN_TOKENS = 250
 
     // --- System prompts ---
 
@@ -61,7 +61,7 @@ Based on this blog post, write a single LinkedIn post that:
 3. Ends with a "Key Takeaways:" section using bullet points (• )
 4. Closes with 3-5 relevant hashtags
 
-Keep the total length between 200-350 words. Do not include a title or heading at the top.
+Keep the total length between 101-150 words. Posts in this range average 8x more impressions than shorter posts. Cut aggressively — every sentence must earn its place. Do not include a title or heading at the top.
 
 Blog post:
 $summary

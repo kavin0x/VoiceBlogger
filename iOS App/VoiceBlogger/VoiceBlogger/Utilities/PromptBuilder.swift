@@ -174,33 +174,46 @@ enum PromptBuilder {
     }
 
     private static let linkedinPromptObject = SocialPromptObject(
-        role: "Act as an expert LinkedIn professional update generator and executive ghostwriter. Write with strategic clarity, specific detail, and a human first-person voice.",
-        objective: "Transform the source content into a high-engagement LinkedIn post that feels authentic, polished, and native to the platform. Preserve the source meaning exactly and choose the post structure that best fits the material.",
-        outputContract: "Return ONE finished LinkedIn post only. Do not return multiple options, labels, analysis, template names, explanations, or markdown headings.",
+        role: "Act as an expert LinkedIn ghostwriter who understands exactly how the platform's algorithm and reader psychology work. You write posts that earn the 'see more' click, generate genuine comments, and feel written by a real person — not a content tool.",
+        objective: "Transform the source content into a high-engagement LinkedIn post optimized for reach and comments. The hook must stop the scroll. The body must reward the click. The CTA must earn a response. Preserve the source meaning exactly and pick the post structure that best fits the material.",
+        outputContract: "Return ONE finished LinkedIn post only — no labels, template names, analysis, explanations, or markdown headings. The post must be ready to copy-paste directly into LinkedIn.",
         templates: [
             PromptTemplate(
                 name: "Original Research / Data Insights",
                 useWhen: "the content includes data, research, metrics, a pattern, or a counter-intuitive finding",
                 structure: [
-                    "hook with the surprising stat or finding",
-                    "core data or observation",
-                    "why it matters",
-                    "actionable takeaway",
-                    "specific CTA question",
-                    "2-3 relevant hashtags"
+                    "precision data hook: lead with the most surprising specific number — under 10 words, no emoji",
+                    "core finding or pattern in 1-2 sentences",
+                    "why it matters or what it changes",
+                    "one concrete actionable takeaway",
+                    "open-ended opinion question as CTA",
+                    "3-5 relevant hashtags on final line"
                 ],
                 style: "analytical, insightful, forward-looking, and precise"
+            ),
+            PromptTemplate(
+                name: "Personal Story / Lesson",
+                useWhen: "the content shares a personal experience, mistake, realization, or journey with a transferable lesson",
+                structure: [
+                    "contrarian or curiosity-gap hook — the lesson or twist, not the backstory, under 10 words",
+                    "brief story in 2-3 short lines (what happened, what was at stake)",
+                    "the turning point or realization",
+                    "the transferable lesson in 1-2 punchy lines",
+                    "open-ended opinion question as CTA",
+                    "3-5 relevant hashtags on final line"
+                ],
+                style: "honest, specific, human, and direct — reads like a real person, not a brand"
             ),
             PromptTemplate(
                 name: "Project Update / Milestone",
                 useWhen: "the content describes shipping, launching, completing, learning, or reaching a meaningful project milestone",
                 structure: [
-                    "hook with the impact or result",
-                    "brief journey or challenge overcome",
-                    "team credit or gratitude when supported by the source",
-                    "what comes next",
-                    "specific CTA question",
-                    "2-3 relevant hashtags"
+                    "hook with the impact or result — what changed, not what was done",
+                    "brief journey or challenge overcome in 1-2 lines",
+                    "team credit or gratitude only when explicitly supported by the source",
+                    "what comes next in 1 line",
+                    "open-ended opinion question as CTA",
+                    "3-5 relevant hashtags on final line"
                 ],
                 style: "celebratory, humble, collaborative, and grounded"
             ),
@@ -208,25 +221,32 @@ enum PromptBuilder {
                 name: "Event / Long-Form Recap",
                 useWhen: "the content recaps a talk, event, interview, podcast, workshop, article, or long-form discussion",
                 structure: [
-                    "hook with the biggest macro takeaway",
-                    "three distinct high-value lessons as short bullets",
-                    "how to apply the lessons",
-                    "specific CTA question",
-                    "2-3 relevant hashtags"
+                    "hook with the single biggest counter-intuitive takeaway — under 10 words",
+                    "3 distinct high-value lessons as short • bullets",
+                    "one sentence on how to apply them",
+                    "open-ended opinion question as CTA",
+                    "3-5 relevant hashtags on final line"
                 ],
                 style: "educational, generous, concise, and synthesizing"
             )
         ],
         rules: [
-            "The first 1-2 lines must earn the 'see more' click. Avoid 'I am thrilled to announce', 'In today's fast-paced world', and other hollow openers.",
-            "Use short paragraphs of 1-3 sentences with frequent line breaks for mobile skimming.",
-            "Sound professional, conversational, authoritative, and human. Avoid corporate jargon such as synergy, utilize, and paradigm shift.",
-            "Use first person when the source supports it. Do not invent personal experiences, names, metrics, dates, claims, links, or gratitude.",
-            "Use at most 2-4 relevant emojis in the entire post, and never place one at the start of the hook.",
-            "Use bullets only for the Event / Long-Form Recap template; otherwise prefer short paragraphs.",
-            "End with a natural open-ended question or a clear next step that invites comments.",
-            "Put 2-3 highly relevant hashtags on the final line only.",
-            "Target 900-1,800 characters unless the source is very short; do not pad thin material."
+            // Hook — the single most important element
+            "HOOK (lines 1-2): This is everything. LinkedIn collapses posts behind 'see more' — the hook decides whether anyone reads the rest. Keep it under 10 words. Choose ONE of: (a) curiosity gap — tease a finding without revealing it; (b) contrarian — challenge conventional wisdom with a specific claim; (c) precise data point — lead with a surprising, specific number. Never open with 'I am thrilled to announce', 'In today's fast-paced world', 'Excited to share', or any hollow filler. Never put an emoji on the hook line.",
+            // Formatting — 57% of LinkedIn traffic is mobile
+            "FORMATTING: Write every sentence on its own line with a blank line between each one. No walls of text. Single-sentence lines with white space between them get 3x more engagement than the same words in an unformatted block. Use • bullets only in the Event / Long-Form Recap template.",
+            // Voice and authenticity
+            "VOICE: Sound like a real person — professional, conversational, and direct. Avoid corporate jargon: synergy, utilize, paradigm shift, leverage, ecosystem, game-changer. Use first person only when the source supports it. Do not invent experiences, names, metrics, dates, claims, or links not present in the source.",
+            // Emojis
+            "EMOJIS: Use 1-2 max, as visual anchors mid-post only. Never on the hook line. More than 2 reads as gimmicky and signals low quality.",
+            // CTA — drives comments which are worth 15x a like
+            "CTA: End with one open-ended opinion question that invites a genuine response. Comments are worth 15x a like in LinkedIn's algorithm. Avoid yes/no questions, 'Comment YES if you agree', and all other engagement bait — LinkedIn penalizes it. Ask something the reader actually has an opinion on.",
+            // Hashtags
+            "HASHTAGS: 3-5 hashtags on the final line only, never in the hook. Use 1 broad category tag + 2-3 niche topical tags. More than 5 triggers a spam flag. Hashtags no longer drive discovery — treat them as SEO categorization, not reach.",
+            // Length
+            "LENGTH: Target 101-150 words (~600-900 characters). Posts in this range average 8x more impressions than posts under 50 words. Cut aggressively — every sentence must earn its place. Do not pad thin material. Never include external links in the post body (60% reach penalty).",
+            // What to avoid
+            "AVOID: AI-sounding phrasing and generic openers (LinkedIn detects them and cuts reach by 30%). Do not use bold/italic unicode substitution — it renders poorly across devices."
         ]
     )
 
