@@ -3,7 +3,7 @@ import SwiftUI
 struct AboutView: View {
     @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
 
-    private let githubURL = URL(string: "https://github.com/kavin0x/voiceblogger") ?? URL(string: "https://github.com")!
+    private let githubURL = URL(string: "https://github.com/kavin0x/VoiceBlogger") ?? URL(string: "https://github.com")!
     private let version: String = {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
@@ -16,7 +16,7 @@ struct AboutView: View {
                 Section {
                     LabeledContent("Made by", value: "Kavin Shah")
                     LabeledContent("Version", value: version)
-                    LabeledContent("License", value: "Open Source")
+                    LabeledContent("License", value: "Apache 2.0")
                 }
 
                 Section("Beta") {

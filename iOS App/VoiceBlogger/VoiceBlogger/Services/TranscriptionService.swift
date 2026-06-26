@@ -135,24 +135,36 @@ final class TranscriptionService: @unchecked Sendable {
             // "[Speaking in a foreign language]" instead of transcribing multilingual audio.
             // Avoid VAD chunking for saved recordings. It is faster, but it can cut off
             // conversational context and worsen accuracy around short replies or pauses.
+            // temperature: 0.0 starts greedy; WhisperKit falls back through higher
+            // temperatures (up to 5 increments of 0.2) when compressionRatioThreshold
+            // or logprobThreshold detects a bad decode. This rescues hesitant/accented
+            // speech openings that greedy decoding drops.
             options = DecodingOptions(
                 task: .transcribe,
                 language: language,
-                temperature: 0,
+                temperature: 0.0,
+                temperatureIncrementOnFallback: 0.2,
+                temperatureFallbackCount: 5,
                 usePrefillPrompt: language != nil,
                 suppressBlank: true,
                 suppressTokens: suppressTokens,
                 noSpeechThreshold: 0.6,
+                compressionRatioThreshold: 2.4,
+                logprobThreshold: -1.0,
                 chunkingStrategy: ChunkingStrategy.none
             )
         case .translate:
             options = DecodingOptions(
                 task: .translate,
-                temperature: 0,
+                temperature: 0.0,
+                temperatureIncrementOnFallback: 0.2,
+                temperatureFallbackCount: 5,
                 usePrefillPrompt: true,
                 suppressBlank: true,
                 suppressTokens: suppressTokens,
                 noSpeechThreshold: 0.6,
+                compressionRatioThreshold: 2.4,
+                logprobThreshold: -1.0,
                 chunkingStrategy: ChunkingStrategy.none
             )
         }
@@ -232,7 +244,7 @@ final class TranscriptionService: @unchecked Sendable {
         }
     }
 
-    private static func nonSpeechAnnotationTokens(for tokenizer: (any WhisperTokenizer)?) -> [Int] {
+    nonisolated static func nonSpeechAnnotationTokens(for tokenizer: (any WhisperTokenizer)?) -> [Int] {
         guard let tokenizer else { return [] }
         // Only suppress tokens for noise/non-content events.
         // Music notes, [Music], and [Singing] are intentionally excluded so that
@@ -242,7 +254,17 @@ final class TranscriptionService: @unchecked Sendable {
             "[Laughter]", "[laughter]", "(Laughter)", "(laughter)",
             "[Inaudible]", "[inaudible]", "(Inaudible)", "(inaudible)",
             "[Silence]", "[silence]", "(Silence)", "(silence)",
-            "[Noise]", "[noise]", "(Noise)", "(noise)"
+            "[Noise]", "[noise]", "(Noise)", "(noise)",
+            // Common Whisper hallucinations on uncertain/silent/short audio clips
+            "[Fast forward]", "[fast forward]", "(Fast forward)",
+            "[Slow motion]", "[slow motion]", "(Slow motion)",
+            "[Crowd cheering]", "[crowd cheering]",
+            "[Cheering]", "[cheering]",
+            "[Coughing]", "[coughing]",
+            "[Sniffling]", "[sniffling]",
+            "[Clapping]", "[clapping]",
+            "[Beep]", "[beep]",
+            "[Static]", "[static]"
         ]
         let tokens = candidates.compactMap { candidate -> Int? in
             let encoded = tokenizer.encode(text: candidate)
@@ -255,10 +277,15 @@ final class TranscriptionService: @unchecked Sendable {
     // (Suppresses a Swift 6 strict-concurrency warning on static properties of @unchecked Sendable classes.)
     nonisolated private static let _tokenFilterRegex = try! NSRegularExpression(pattern: "<\\|[^|>]+\\|>")
     nonisolated private static let _nonSpeechAnnotationRegex = try! NSRegularExpression(
-        // Strips only genuine noise/non-content annotations.
-        // singing and music are intentionally excluded so that Whisper's lyric
-        // transcripts (e.g. "♪ Hello, it's me ♪" or "[Music]") are preserved.
-        pattern: #"(?i)(?:\*\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\*|\[\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\]|\(\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise)\s*\))"#
+        // Strips noise/non-content annotations and common Whisper hallucination phrases.
+        // "music" and "singing" are intentionally excluded so lyric transcripts are preserved.
+        // "fast forward", "slow motion", etc. are hallucinations Whisper emits when uncertain
+        // about the start or end of a clip — they carry no speech content.
+        pattern: #"(?i)(?:"# +
+            #"\*\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise|fast forward|slow motion|crowd cheering|cheering|clapping|sniffling|coughing|beep|static|distortion)\s*\*"# +
+            #"|\[\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise|fast forward|slow motion|crowd cheering|cheering|clapping|sniffling|coughing|beep|static|distortion)\s*\]"# +
+            #"|\(\s*(?:applause|laughter|laughing|inaudible|silence|noise|background noise|fast forward|slow motion|crowd cheering|cheering|clapping|sniffling|coughing|beep|static|distortion)\s*\)"# +
+        #")"#
     )
     nonisolated private static let _extraWhitespaceRegex = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
     // Whisper emits this literal when it detects a language mismatch (e.g. audio is non-English

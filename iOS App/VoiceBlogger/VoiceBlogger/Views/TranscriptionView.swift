@@ -4,6 +4,7 @@ import SwiftData
 struct TranscriptionView: View {
     let post: BlogPost
     @Environment(AppState.self) var appState
+    @Environment(AudioRecorder.self) var recorder
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
 
@@ -33,14 +34,25 @@ struct TranscriptionView: View {
                     }
                 }
 
-                // Crash-recovery banner for interrupted transcription
                 if !isTranscribing && post.transcriptionState == .inProgress {
-                    Section {
-                        Label("Transcription was interrupted", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    if recorder.isFinalizingTranscript {
+                        // Last audio chunk is being transcribed in the background
+                        Section {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Finalizing transcript…")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        // Crash-recovery banner for a genuinely interrupted transcription
+                        Section {
+                            Label("Transcription was interrupted", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -109,11 +121,19 @@ struct TranscriptionView: View {
             }
             .onAppear {
                 editableTranscript = post.transcript
+                // Handle the case where finalization already completed before this view appeared
+                if post.transcriptionState == .inProgress && !recorder.isFinalizingTranscript {
+                    applyLiveTranscript()
+                }
             }
             .onDisappear {
                 if !isTranscribing {
                     saveEditedTranscript()
                 }
+            }
+            .onChange(of: recorder.isFinalizingTranscript) { _, isFinalizing in
+                guard !isFinalizing, post.transcriptionState == .inProgress else { return }
+                applyLiveTranscript()
             }
             .task {
                 if post.transcriptionState == .untranscribed {
@@ -121,6 +141,16 @@ struct TranscriptionView: View {
                 }
             }
         }
+    }
+
+    // Called when the background tail-chunk transcription finishes.
+    private func applyLiveTranscript() {
+        let finalText = recorder.liveTranscript.isEmpty ? post.transcript : recorder.liveTranscript
+        post.transcript = finalText
+        editableTranscript = finalText
+        post.detectedSpeakerCount = finalText.isEmpty ? 0 : 1
+        post.transcriptionState = finalText.isEmpty ? .untranscribed : .complete
+        try? modelContext.save()
     }
 
     private func runTranscription() {
@@ -148,9 +178,6 @@ struct TranscriptionView: View {
                 // Free WhisperKit memory before any later LLM generation to prevent OOM.
                 await service.cleanup()
                 downloadManager.whisperKit = nil
-                Task {
-                    await downloadManager.warmWhisper()
-                }
                 post.transcript = finalTranscript.displayText
                 editableTranscript = finalTranscript.displayText
                 post.detectedSpeakerCount = finalTranscript.detectedSpeakerCount

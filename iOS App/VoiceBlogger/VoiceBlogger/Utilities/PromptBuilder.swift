@@ -1,49 +1,6 @@
 import Foundation
 
 enum PromptBuilder {
-    private struct PromptTemplate {
-        let name: String
-        let useWhen: String
-        let structure: [String]
-        let style: String
-
-        var promptText: String {
-            """
-            TEMPLATE: \(name)
-            Use when: \(useWhen)
-            Structure: \(structure.joined(separator: " -> "))
-            Style: \(style)
-            """
-        }
-    }
-
-    private struct SocialPromptObject {
-        let role: String
-        let objective: String
-        let outputContract: String
-        let templates: [PromptTemplate]
-        let rules: [String]
-
-        var systemPrompt: String {
-            """
-            ROLE
-            \(role)
-
-            OBJECTIVE
-            \(objective)
-
-            OUTPUT CONTRACT
-            \(outputContract)
-
-            POST TYPE TEMPLATES
-            \(templates.map(\.promptText).joined(separator: "\n\n"))
-
-            RULES
-            \(rules.map { "- \($0)" }.joined(separator: "\n"))
-            """
-        }
-    }
-
     private static let instagramSummaryCharacterLimit = 1800
     private static let linkedinSummaryCharacterLimit = 2400
     // Qwen2.5 1.5B has a 32k-token context window. With ~300 tokens for the prompt
@@ -147,6 +104,10 @@ enum PromptBuilder {
         - No corporate speak. No "I'm excited to share..."
         - Do not mention a blog, link, or external content. The caption stands alone.
         - Be specific - use real details from the content, not generic fluff.
+        
+        Sentence Structure Variation: It breaks up long, complex sentences and combines short, choppy ones. It changes the order of clauses and introduces different grammatical rhythms.
+        Lexical Richness: It introduces a more diverse and colloquial vocabulary, including idioms, phrasal verbs, and context-appropriate slang while keeping formality. This moves the text away from the “textbook” feel of raw AI output.
+        Introducing “Controlled Imperfections”: This is the key. A human writer might occasionally use a sentence fragment for emphasis. Like this. Or start a sentence with “But”, except in a way that feels natural in informal writing. The humanizer strategically adds these elements.
         """
         let user = """
         Write one Instagram caption based on this content:
@@ -160,95 +121,32 @@ enum PromptBuilder {
     }
 
     static func linkedinMessages(blogContent: String) -> [[String: String]] {
-        let system = linkedinPromptObject.systemPrompt
-        let user = """
-        Select the best POST TYPE TEMPLATE for the content below, then write one complete LinkedIn post.
+        let system = """
+        You are a LinkedIn ghostwriter. Write ONE LinkedIn post from the content provided.
 
-        Content source:
-        \(structuralSummary(of: blogContent, limit: linkedinSummaryCharacterLimit))
+        OUTPUT RULES — obey all of them exactly:
+        - Output ONLY the post text. No preamble, no "Here is your post:", no labels, no explanations, no markdown.
+        - No bold, no italics, no headers. Plain text only — LinkedIn does not render markdown.
+        - 101-150 words total. Count strictly. Cut anything that does not earn its place.
+        - Every sentence on its own line. Blank line between each sentence.
+        - Do not invent facts, metrics, or claims not in the source.
+        - Do not include any external links.
+
+        STRUCTURE:
+        1. Hook (line 1): under 10 words. Best options in order: (a) curiosity gap — tease the finding without revealing it; (b) contrarian — challenge a common belief with a specific claim; (c) precise surprising fact. No emoji on this line.
+        2. Body: 3-5 short lines. Deliver one concrete, specific insight the reader would want to screenshot and save. Make it dwell-worthy — something that makes them stop and think, not just nod. 1-2 emojis maximum, never on the hook line.
+        3. CTA: one open-ended question the reader has a genuine opinion on. No "Comment YES", no "Like if you agree", no engagement bait — LinkedIn penalizes it.
+        4. Hashtags: 3-5 on the final line only.
+
+        NEVER start with: "I'm excited", "In today's world", "Thrilled to share", "Game-changer", "Leverage", "Ecosystem", or any hollow opener.
+        NEVER use AI-sounding phrases — LinkedIn's algorithm detects and suppresses them.
         """
+        let user = "Write a LinkedIn post from this content:\n\n\(structuralSummary(of: blogContent, limit: linkedinSummaryCharacterLimit))"
         return [
             ["role": "system", "content": system],
             ["role": "user", "content": user]
         ]
     }
-
-    private static let linkedinPromptObject = SocialPromptObject(
-        role: "Act as an expert LinkedIn ghostwriter who understands exactly how the platform's algorithm and reader psychology work. You write posts that earn the 'see more' click, generate genuine comments, and feel written by a real person — not a content tool.",
-        objective: "Transform the source content into a high-engagement LinkedIn post optimized for reach and comments. The hook must stop the scroll. The body must reward the click. The CTA must earn a response. Preserve the source meaning exactly and pick the post structure that best fits the material.",
-        outputContract: "Return ONE finished LinkedIn post only — no labels, template names, analysis, explanations, or markdown headings. The post must be ready to copy-paste directly into LinkedIn.",
-        templates: [
-            PromptTemplate(
-                name: "Original Research / Data Insights",
-                useWhen: "the content includes data, research, metrics, a pattern, or a counter-intuitive finding",
-                structure: [
-                    "precision data hook: lead with the most surprising specific number — under 10 words, no emoji",
-                    "core finding or pattern in 1-2 sentences",
-                    "why it matters or what it changes",
-                    "one concrete actionable takeaway",
-                    "open-ended opinion question as CTA",
-                    "3-5 relevant hashtags on final line"
-                ],
-                style: "analytical, insightful, forward-looking, and precise"
-            ),
-            PromptTemplate(
-                name: "Personal Story / Lesson",
-                useWhen: "the content shares a personal experience, mistake, realization, or journey with a transferable lesson",
-                structure: [
-                    "contrarian or curiosity-gap hook — the lesson or twist, not the backstory, under 10 words",
-                    "brief story in 2-3 short lines (what happened, what was at stake)",
-                    "the turning point or realization",
-                    "the transferable lesson in 1-2 punchy lines",
-                    "open-ended opinion question as CTA",
-                    "3-5 relevant hashtags on final line"
-                ],
-                style: "honest, specific, human, and direct — reads like a real person, not a brand"
-            ),
-            PromptTemplate(
-                name: "Project Update / Milestone",
-                useWhen: "the content describes shipping, launching, completing, learning, or reaching a meaningful project milestone",
-                structure: [
-                    "hook with the impact or result — what changed, not what was done",
-                    "brief journey or challenge overcome in 1-2 lines",
-                    "team credit or gratitude only when explicitly supported by the source",
-                    "what comes next in 1 line",
-                    "open-ended opinion question as CTA",
-                    "3-5 relevant hashtags on final line"
-                ],
-                style: "celebratory, humble, collaborative, and grounded"
-            ),
-            PromptTemplate(
-                name: "Event / Long-Form Recap",
-                useWhen: "the content recaps a talk, event, interview, podcast, workshop, article, or long-form discussion",
-                structure: [
-                    "hook with the single biggest counter-intuitive takeaway — under 10 words",
-                    "3 distinct high-value lessons as short • bullets",
-                    "one sentence on how to apply them",
-                    "open-ended opinion question as CTA",
-                    "3-5 relevant hashtags on final line"
-                ],
-                style: "educational, generous, concise, and synthesizing"
-            )
-        ],
-        rules: [
-            // Hook — the single most important element
-            "HOOK (lines 1-2): This is everything. LinkedIn collapses posts behind 'see more' — the hook decides whether anyone reads the rest. Keep it under 10 words. Choose ONE of: (a) curiosity gap — tease a finding without revealing it; (b) contrarian — challenge conventional wisdom with a specific claim; (c) precise data point — lead with a surprising, specific number. Never open with 'I am thrilled to announce', 'In today's fast-paced world', 'Excited to share', or any hollow filler. Never put an emoji on the hook line.",
-            // Formatting — 57% of LinkedIn traffic is mobile
-            "FORMATTING: Write every sentence on its own line with a blank line between each one. No walls of text. Single-sentence lines with white space between them get 3x more engagement than the same words in an unformatted block. Use • bullets only in the Event / Long-Form Recap template.",
-            // Voice and authenticity
-            "VOICE: Sound like a real person — professional, conversational, and direct. Avoid corporate jargon: synergy, utilize, paradigm shift, leverage, ecosystem, game-changer. Use first person only when the source supports it. Do not invent experiences, names, metrics, dates, claims, or links not present in the source.",
-            // Emojis
-            "EMOJIS: Use 1-2 max, as visual anchors mid-post only. Never on the hook line. More than 2 reads as gimmicky and signals low quality.",
-            // CTA — drives comments which are worth 15x a like
-            "CTA: End with one open-ended opinion question that invites a genuine response. Comments are worth 15x a like in LinkedIn's algorithm. Avoid yes/no questions, 'Comment YES if you agree', and all other engagement bait — LinkedIn penalizes it. Ask something the reader actually has an opinion on.",
-            // Hashtags
-            "HASHTAGS: 3-5 hashtags on the final line only, never in the hook. Use 1 broad category tag + 2-3 niche topical tags. More than 5 triggers a spam flag. Hashtags no longer drive discovery — treat them as SEO categorization, not reach.",
-            // Length
-            "LENGTH: Target 101-150 words (~600-900 characters). Posts in this range average 8x more impressions than posts under 50 words. Cut aggressively — every sentence must earn its place. Do not pad thin material. Never include external links in the post body (60% reach penalty).",
-            // What to avoid
-            "AVOID: AI-sounding phrasing and generic openers (LinkedIn detects them and cuts reach by 30%). Do not use bold/italic unicode substitution — it renders poorly across devices."
-        ]
-    )
 
     // MARK: - Utilities
 

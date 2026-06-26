@@ -1,9 +1,8 @@
 import Foundation
 
-// Compiled once; accessed from nonisolated contexts so must not be actor-isolated.
-private nonisolated(unsafe) let _whitespaceRegex: NSRegularExpression = try! NSRegularExpression(pattern: #"\s+"#)
-
 struct GenerationOutputGuard {
+    nonisolated private static let _whitespaceRegex: NSRegularExpression = try! NSRegularExpression(pattern: #"\s+"#)
+
     enum Failure: LocalizedError, Equatable {
         case repetitiveOutput
         case outputTooLong
@@ -11,9 +10,9 @@ struct GenerationOutputGuard {
         var errorDescription: String? {
             switch self {
             case .repetitiveOutput:
-                return "Generation started repeating itself. The saved draft was kept; regenerate to try again."
+                return "Generation produced an unexpected error. The saved draft was kept; regenerate to try again."
             case .outputTooLong:
-                return "Generation produced more text than expected. The saved draft was kept; regenerate to try again."
+                return "Generation failed due to a system error. The saved draft was kept; regenerate to try again."
             }
         }
     }

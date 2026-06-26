@@ -400,48 +400,67 @@ final class ModelDownloadManager {
         do {
             guard downloadRunID == runID, !Task.isCancelled else { return }
 
-            // If the model directory already exists (e.g. retry after a partial download),
-            // skip the network download entirely and mark ready immediately.
-            if let existingDir = Self.localWhisperModelDirectory() {
-                _ = existingDir
-                whisperProgress = 1.0
-                isWhisperReady = true
-                UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
-                return
+            let existingDir = Self.localWhisperModelDirectory()
+
+            if existingDir == nil {
+                whisperProgress = 0.05
+                // Download model files with load: false — files land on disk without
+                // pulling CoreML weights into RAM. No progress callback is available here,
+                // so animate smoothly to 0.45 while the ~800 MB transfer runs.
+                let config = WhisperKitConfig(
+                    model: kWhisperModelID,
+                    computeOptions: TranscriptionService.whisperComputeOptions(),
+                    load: false
+                )
+                let progressTask = Task { @MainActor [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(1))
+                        guard let self, self.downloadRunID == runID, !self.isWhisperReady, !Task.isCancelled else { return }
+                        let next = min(self.whisperProgress + 0.002, 0.45)
+                        if next > self.whisperProgress { self.whisperProgress = next }
+                    }
+                }
+                defer { progressTask.cancel() }
+                let kit = try await WhisperKit(config)
+                guard downloadRunID == runID, !Task.isCancelled else {
+                    await kit.unloadModels()
+                    return
+                }
+                progressTask.cancel()
             }
 
-            whisperProgress = 0.05
-            // WhisperKit doesn't expose a progress callback through WhisperKitConfig, so
-            // use a two-phase init: download-only first (load: false), then set the
-            // modelStateCallback before calling loadModels() so UI sees loading progress.
-            let config = WhisperKitConfig(
-                model: kWhisperModelID,
+            // Compile CoreML models now while the user is still on the download screen.
+            // MLModel.load() writes a compiled .mlmodelc to the system cache on first run;
+            // subsequent loads (warmWhisper, TranscriptionService.make) are fast reads.
+            // prewarmModels() compiles without retaining the weights in RAM.
+            guard downloadRunID == runID, !Task.isCancelled else { return }
+            whisperProgress = 0.75
+            let compileConfig = WhisperKitConfig(
+                modelFolder: Self.localWhisperModelDirectory()?.path,
                 computeOptions: TranscriptionService.whisperComputeOptions(),
                 load: false
             )
-            // Phase 1: download model files (~80% of total time). No callback available here,
-            // so animate progress smoothly to 0.45 while we wait.
-            // ~0.002/tick at 1s → 0.45 over ~4 min for ~800 MB Whisper model on slow connections.
-            let progressTask = Task { @MainActor [weak self] in
+            let compileKit = try await WhisperKit(compileConfig)
+            guard downloadRunID == runID, !Task.isCancelled else {
+                await compileKit.unloadModels()
+                return
+            }
+            // Animate progress from 0.75 → 0.95 during the compilation phase so the bar
+            // keeps moving while MLModel.load() compiles and caches the .mlmodelc.
+            let compileProgressTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
                     guard let self, self.downloadRunID == runID, !self.isWhisperReady, !Task.isCancelled else { return }
-                    let next = min(self.whisperProgress + 0.002, 0.45)
-                    if next > self.whisperProgress {
-                        self.whisperProgress = next
-                    }
+                    let next = min(self.whisperProgress + 0.003, 0.95)
+                    if next > self.whisperProgress { self.whisperProgress = next }
                 }
             }
-            defer { progressTask.cancel() }
-            let kit = try await WhisperKit(config)
-            guard downloadRunID == runID, !Task.isCancelled else {
-                await kit.unloadModels()
-                return
-            }
-            progressTask.cancel()
+            defer { compileProgressTask.cancel() }
+            try await compileKit.prewarmModels()
+            compileProgressTask.cancel()
+            await compileKit.unloadModels()
 
-            // Files are on disk — mark ready. warmWhisper() loads CoreML models lazily
-            // when the user reaches the recording screen, so setup completes sooner.
+            guard downloadRunID == runID, !Task.isCancelled else { return }
             whisperProgress = 1.0
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)

@@ -67,7 +67,7 @@ struct VoiceBloggerApp: App {
                         appState.navigateTo(.modelDownload)
                         downloadManager.continuePendingDownloadIfNeeded()
                     } else if onboardingComplete {
-                        await downloadManager.warmWhisper()
+                        Task { await downloadManager.warmWhisper() }
                     }
                 }
         }

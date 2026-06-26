@@ -53,7 +53,7 @@ final class LiveActivityCoordinator {
             detail: isComplete ? "Voice Blogger works offline" : "Open the app to resume",
             progress: isComplete ? 1 : nil,
             startedAt: nil,
-            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle.fill"
+            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle"
         )
         end(kind: .downloading, state: state)
     }

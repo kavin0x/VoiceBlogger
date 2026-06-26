@@ -6,19 +6,26 @@ struct BlogListView: View {
     @Query(sort: \BlogPost.createdAt, order: .reverse) private var posts: [BlogPost]
     @Environment(\.modelContext) private var modelContext
     @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
+    @State private var searchText = ""
+
+    private var filteredPosts: [BlogPost] {
+        SearchUtility.filter(posts, query: searchText)
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 if posts.isEmpty {
                     ContentUnavailableView(
-                        "No Generated Content Yet",
+                        "No Content Yet",
                         systemImage: "doc.text",
                         description: Text("Record your voice and generate notes or a post to see it here.")
                     )
+                } else if filteredPosts.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
                 } else {
                     List {
-                        ForEach(posts) { post in
+                        ForEach(filteredPosts) { post in
                             Button {
                                 if post.transcriptionState == nil || post.transcriptionState == .complete {
                                     appState.navigateTo(.viewingBlog(post: post))
@@ -34,10 +41,11 @@ struct BlogListView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .onDelete(perform: deletePosts)
+                        .onDelete(perform: deleteFilteredPosts)
                     }
                 }
             }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search history")
             .navigationTitle("History")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -52,9 +60,9 @@ struct BlogListView: View {
         }
     }
 
-    private func deletePosts(offsets: IndexSet) {
+    private func deleteFilteredPosts(offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(posts[index])
+            modelContext.delete(filteredPosts[index])
         }
         try? modelContext.save()
     }

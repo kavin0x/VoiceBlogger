@@ -94,6 +94,21 @@ struct RecordingView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                // Live transcript display during recording
+                if recorder.isRecording && !recorder.liveTranscript.isEmpty {
+                    ScrollView {
+                        Text(recorder.liveTranscript)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .frame(maxHeight: 200)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 24)
+                    .transition(.opacity)
+                }
+
                 if !recorder.isRecording {
                     Button {
                         showFilePicker = true
@@ -182,7 +197,8 @@ struct RecordingView: View {
                 return
             }
             do {
-                try await recorder.startRecording()
+                await downloadManager.ensureWhisperWarm()
+                try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
                 // Permission denied during the request (first tap after denial)
                 if recorder.permissionDenied {
                     showPermissionAlert = true
@@ -200,6 +216,11 @@ struct RecordingView: View {
             duration: recorder.duration,
             transcriptionState: .untranscribed
         )
+        // Pre-populate with live transcript if background transcription ran during recording
+        if !recorder.liveTranscript.isEmpty {
+            post.transcript = recorder.liveTranscript
+            post.transcriptionState = .inProgress  // tail chunk still finalizing
+        }
         modelContext.insert(post)
         try? modelContext.save()
         appState.navigateTo(.transcribing(post: post))
