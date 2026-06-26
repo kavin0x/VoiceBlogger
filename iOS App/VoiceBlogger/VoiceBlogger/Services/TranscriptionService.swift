@@ -146,11 +146,11 @@ final class TranscriptionService: @unchecked Sendable {
                 temperatureIncrementOnFallback: 0.2,
                 temperatureFallbackCount: 5,
                 usePrefillPrompt: language != nil,
-                suppressBlank: true,
+                detectLanguage: true,
                 suppressTokens: suppressTokens,
-                noSpeechThreshold: 0.6,
                 compressionRatioThreshold: 2.4,
-                logprobThreshold: -1.0,
+                logProbThreshold: -1.0,
+                noSpeechThreshold: 0.6,
                 chunkingStrategy: ChunkingStrategy.none
             )
         case .translate:
@@ -160,11 +160,11 @@ final class TranscriptionService: @unchecked Sendable {
                 temperatureIncrementOnFallback: 0.2,
                 temperatureFallbackCount: 5,
                 usePrefillPrompt: true,
-                suppressBlank: true,
+                skipSpecialTokens: true,
                 suppressTokens: suppressTokens,
-                noSpeechThreshold: 0.6,
                 compressionRatioThreshold: 2.4,
-                logprobThreshold: -1.0,
+                logProbThreshold: -1.0,
+                noSpeechThreshold: 0.6,
                 chunkingStrategy: ChunkingStrategy.none
             )
         }
