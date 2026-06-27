@@ -245,4 +245,3 @@ struct InstagramView: View {
         try? (post.modelContext ?? modelContext).save()
     }
 }
-

@@ -250,13 +250,7 @@ private struct Parser {
                 }
 
                 let nextIndent = indentationCount(in: next)
-                if nextIndent <= baseIndent && startsAnyListItem(next) {
-                    break
-                }
-                if nextIndent <= baseIndent && isBlockStart(next) {
-                    break
-                }
-                if nextIndent <= baseIndent && !startsAnyListItem(next) {
+                if nextIndent <= baseIndent {
                     break
                 }
 
@@ -380,7 +374,7 @@ private struct Parser {
         tableCells(in: line).compactMap { cell in
             let trimmed = cell.trimmingCharacters(in: .whitespaces)
             let core = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
-            guard core.count >= 3, core.allSatisfy({ $0 == "-" }) else { return nil }
+            guard !core.isEmpty, core.allSatisfy({ $0 == "-" }) else { return nil }
 
             if trimmed.hasPrefix(":") && trimmed.hasSuffix(":") {
                 return .center

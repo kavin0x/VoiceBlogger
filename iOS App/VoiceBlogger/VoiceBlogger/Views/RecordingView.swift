@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
-    
+
 struct RecordingView: View {
     @Environment(AppState.self) var appState
     @Environment(AudioRecorder.self) var recorder

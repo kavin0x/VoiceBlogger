@@ -42,7 +42,7 @@ final class AudioRecorder: NSObject {
     @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
     @ObservationIgnored private let liveActivity = LiveActivityCoordinator()
 
-    // 30 seconds of 16kHz mono audio = one Whisper-native window
+    // 15 seconds of 16kHz mono audio — half a Whisper window, gives faster live feedback
     nonisolated private static let chunkSampleCount = 15 * 16_000
 
     override init() {
@@ -280,7 +280,7 @@ final class AudioRecorder: NSObject {
             guard let self else { return }
             self.sampleAccumulator.append(contentsOf: newSamples)
 
-            // Fire a transcription task for each complete 30s window
+            // Fire a transcription task for each complete 15s window
             while self.sampleAccumulator.count >= Self.chunkSampleCount {
                 guard let wk = self.activeWhisperKit else {
                     // WhisperKit not available — drain the window and skip

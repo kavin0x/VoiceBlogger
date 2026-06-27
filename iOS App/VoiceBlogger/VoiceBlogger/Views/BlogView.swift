@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftData
 
-
 struct BlogView: View {
     let post: BlogPost
     @Environment(AppState.self) var appState
@@ -160,7 +159,7 @@ struct BlogView: View {
                             Image(systemName: "ellipsis.circle")
                         }
                         .accessibilityLabel("More options")
- 
+
                     }
                 }
             }
