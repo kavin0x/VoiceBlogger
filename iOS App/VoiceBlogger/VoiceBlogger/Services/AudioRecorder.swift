@@ -149,9 +149,16 @@ final class AudioRecorder: NSObject {
         isRecording = true
         recordingStartTime = .now
         duration = 0
+        IntentStorage.markRecordingActive()
 
         startTimers()
         liveActivity.startRecording(startedAt: recordingStartTime ?? .now)
+    }
+
+    func attachWhisperKit(_ whisperKit: WhisperKit?) {
+        sampleQueue.sync {
+            activeWhisperKit = whisperKit
+        }
     }
 
     func stopRecording() -> URL? {
@@ -167,6 +174,7 @@ final class AudioRecorder: NSObject {
         hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
         latestAudioLevel = -60
+        IntentStorage.clearRecordingActive()
         liveActivity.endRecording()
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
 
@@ -224,6 +232,7 @@ final class AudioRecorder: NSObject {
         latestAudioLevel = -60
         isFinalizingTranscript = false
         liveTranscript = ""
+        IntentStorage.clearRecordingActive()
         liveActivity.endRecording()
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
 
@@ -425,6 +434,7 @@ final class AudioRecorder: NSObject {
             audioLevels = Array(repeating: -60, count: 30)
             latestAudioLevel = -60
             isFinalizingTranscript = false
+            IntentStorage.clearRecordingActive()
             liveActivity.endRecording()
 
             sampleQueue.async { [weak self] in
@@ -480,6 +490,11 @@ final class AudioRecorder: NSObject {
             audioLevels.removeFirst()
             audioLevels.append(level)
         }
+    }
+
+    func recoverStaleRecordingActivityIfNeeded() {
+        guard !isRecording, IntentStorage.consumeRecordingActive() else { return }
+        liveActivity.endRecording()
     }
 }
 

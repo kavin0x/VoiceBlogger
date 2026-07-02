@@ -56,6 +56,7 @@ struct VoiceBloggerApp: App {
                 .environment(audioRecorder)
                 .environment(downloadManager)
                 .task {
+                    audioRecorder.recoverStaleRecordingActivityIfNeeded()
                     // Skip model gating entirely during UI tests so views are reachable
                     // without downloading ~2.5 GB of models on every test run.
                     guard ProcessInfo.processInfo.environment["UI_TESTING"] == nil else { return }
@@ -63,7 +64,9 @@ struct VoiceBloggerApp: App {
                     // so models already on disk are recognized even after an app update that
                     // would otherwise clear the ready flags and force a spurious re-download.
                     downloadManager.validatePersistedModelReadiness()
-                    if onboardingComplete && !downloadManager.allModelsReady {
+                    let intentPending = IntentStorage.hasStartRecordingPending()
+                        || IntentStorage.hasStopRecordingPending()
+                    if onboardingComplete && !downloadManager.allModelsReady && !intentPending {
                         appState.navigateTo(.modelDownload)
                         downloadManager.continuePendingDownloadIfNeeded()
                     } else if onboardingComplete {

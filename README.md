@@ -21,7 +21,7 @@ No cloud. No API keys. No cost per run. Just private, local AI.
 Voice Blogger lets you record a voice note and walk away with a fully written, formatted blog post — along with ready-to-post LinkedIn and Instagram captions. Everything runs locally on your iPhone using on-device AI models. No account required, no internet needed after setup.
 
 ```
-Record your voice  →  Transcribe  →  Polish into a blog post  →  Export to LinkedIn / Instagram
+Record your voice  →  Transcribe  →  Polish into a blog post/meeting notes  →  Export to LinkedIn / Instagram
 ```
 
 ---
@@ -101,7 +101,7 @@ python Transcribe_and_blog.py entrevista.mp3 --language es --task translate --mo
 Given `Raw_Data/recording.m4a`, three files are produced:
 
 | File | Contents |
-|---|---|
+| --- | --- |
 | `Raw_Data/recording_raw.txt` | Raw Whisper transcript |
 | `blog/recording_blog.md` | Polished blog post (Markdown) |
 | `insta/recording_instagram.md` | Instagram captions with hashtags |
@@ -118,7 +118,6 @@ voiceblogger/
 │       ├── Services/           # Audio, transcription, LLM
 │       ├── Views/              # SwiftUI screens
 │       └── Utilities/          # Prompts, blog generation
-├── Android-App/                # Android companion (beta)
 ├── cliTools/                   # Python CLI scripts
 │   └── Transcribe_and_blog.py
 ├── Raw_Data/                   # Drop audio files here (CLI)
@@ -148,7 +147,6 @@ See [PrivacyPolicy.md](PrivacyPolicy.md) for the full privacy policy.
 |---|---|
 | **iOS App** | iPhone with iOS 18+, ~2 GB free storage (for models) |
 | **CLI Tool** | Apple Silicon Mac (M1/M2/M3/M4), Python 3.10+, Ollama |
-| **Android App** | Android 12+ (beta) |
 
 ---
 

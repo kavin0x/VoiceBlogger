@@ -21,7 +21,10 @@
 		8AB9EBCF2FCBBCDA00ABF038 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 8AB9EBCE2FCBBCDA00ABF038 /* Tokenizers */; };
 		8AC9F37D2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */; };
 		8AC9F37E2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */; };
-		8AC9F37F2FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8AC9F37F2FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 8AC9F3742FE8C17C00661D31 /* VoiceBloggerLiveActivities.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8AC9F3852FE8C17C00661D31 /* VoiceBloggerControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F3862FE8C17C00661D31 /* VoiceBloggerControls.swift */; };
+		8AC9F3882FE8C17C00661D31 /* VoiceBloggerIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F3872FE8C17C00661D31 /* VoiceBloggerIntents.swift */; };
+		8AC9F3892FE8C17C00661D32 /* IntentStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC9F38A2FE8C17C00661D32 /* IntentStorage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +70,9 @@
 		8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBloggerLiveActivities.swift; sourceTree = "<group>"; };
 		8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceBloggerActivityAttributes.swift; path = VoiceBlogger/Shared/VoiceBloggerActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
 		8AC9F3842FE8C17C00661D31 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		8AC9F3862FE8C17C00661D31 /* VoiceBloggerControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBloggerControls.swift; sourceTree = "<group>"; };
+		8AC9F3872FE8C17C00661D31 /* VoiceBloggerIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VoiceBloggerIntents.swift; path = VoiceBlogger/AppIntents/VoiceBloggerIntents.swift; sourceTree = SOURCE_ROOT; };
+		8AC9F38A2FE8C17C00661D32 /* IntentStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IntentStorage.swift; path = VoiceBlogger/Shared/IntentStorage.swift; sourceTree = SOURCE_ROOT; };
 		8AD556492FCBAA01001151C1 /* VoiceBlogger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceBlogger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8AD556582FCBAA03001151C1 /* VoiceBloggerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8AD556622FCBAA03001151C1 /* VoiceBloggerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoiceBloggerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -158,6 +164,9 @@
 			isa = PBXGroup;
 			children = (
 				8AC9F37B2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift */,
+				8AC9F3862FE8C17C00661D31 /* VoiceBloggerControls.swift */,
+				8AC9F3872FE8C17C00661D31 /* VoiceBloggerIntents.swift */,
+				8AC9F38A2FE8C17C00661D32 /* IntentStorage.swift */,
 				8AC9F3842FE8C17C00661D31 /* Info.plist */,
 				8AC9F37C2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift */,
 			);
@@ -387,6 +396,9 @@
 			files = (
 				8AC9F37D2FE8C17C00661D31 /* VoiceBloggerLiveActivities.swift in Sources */,
 				8AC9F37E2FE8C17C00661D31 /* VoiceBloggerActivityAttributes.swift in Sources */,
+				8AC9F3852FE8C17C00661D31 /* VoiceBloggerControls.swift in Sources */,
+				8AC9F3882FE8C17C00661D31 /* VoiceBloggerIntents.swift in Sources */,
+				8AC9F3892FE8C17C00661D32 /* IntentStorage.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -436,18 +448,19 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VoiceBloggerLiveActivities/VoiceBloggerLiveActivities.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VoiceBloggerLiveActivities/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger.VoiceBloggerLiveActivities;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -461,18 +474,18 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CODE_SIGN_ENTITLEMENTS = VoiceBloggerLiveActivities/VoiceBloggerLiveActivities.entitlements;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VoiceBloggerLiveActivities/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger.VoiceBloggerLiveActivities;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -614,7 +627,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = VoiceBlogger/VoiceBlogger.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -628,19 +641,20 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "MAIN_APP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -657,7 +671,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = VoiceBlogger/VoiceBlogger.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -671,19 +685,20 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = anup.VoiceBlogger;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "MAIN_APP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -698,11 +713,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = QVK58AVGRJ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -720,11 +735,11 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = QVK58AVGRJ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -741,10 +756,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = QVK58AVGRJ;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -761,10 +776,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = QVK58AVGRJ;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = kavin.VoiceBloggerUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;

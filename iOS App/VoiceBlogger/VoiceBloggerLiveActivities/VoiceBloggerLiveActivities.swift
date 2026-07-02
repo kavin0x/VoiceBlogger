@@ -6,6 +6,8 @@ import WidgetKit
 struct VoiceBloggerLiveActivitiesBundle: WidgetBundle {
     var body: some Widget {
         VoiceBloggerLiveActivityWidget()
+        StartRecordingControl()
+        StopRecordingControl()
     }
 }
 

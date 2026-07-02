@@ -1,12 +1,17 @@
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
 import ActivityKit
+#endif
 import Foundation
 
 @MainActor
 final class LiveActivityCoordinator {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
     private var recordingActivity: Activity<VoiceBloggerActivityAttributes>?
     private var downloadActivity: Activity<VoiceBloggerActivityAttributes>?
+#endif
 
     func startRecording(startedAt: Date = .now) {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let state = VoiceBloggerActivityAttributes.ContentState(
@@ -17,9 +22,11 @@ final class LiveActivityCoordinator {
             symbolName: "mic.fill"
         )
         startOrUpdate(kind: .recording, state: state, relevanceScore: 100)
+#endif
     }
 
     func endRecording() {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         let state = VoiceBloggerActivityAttributes.ContentState(
             title: "Recording Saved",
             detail: "Ready to transcribe",
@@ -28,6 +35,7 @@ final class LiveActivityCoordinator {
             symbolName: "checkmark.circle.fill"
         )
         end(kind: .recording, state: state)
+#endif
     }
 
     func startDownload(progress: Double, detail: String) {
@@ -35,6 +43,7 @@ final class LiveActivityCoordinator {
     }
 
     func updateDownload(progress: Double, detail: String) {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let state = VoiceBloggerActivityAttributes.ContentState(
@@ -45,9 +54,11 @@ final class LiveActivityCoordinator {
             symbolName: "arrow.down.circle.fill"
         )
         startOrUpdate(kind: .downloading, state: state, relevanceScore: 80)
+#endif
     }
 
     func endDownload(isComplete: Bool) {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         let state = VoiceBloggerActivityAttributes.ContentState(
             title: isComplete ? "Models Ready" : "Download Paused",
             detail: isComplete ? "Voice Blogger works offline" : "Open the app to resume",
@@ -56,8 +67,10 @@ final class LiveActivityCoordinator {
             symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle"
         )
         end(kind: .downloading, state: state)
+#endif
     }
 
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
     private func startOrUpdate(
         kind: VoiceBloggerActivityAttributes.ActivityKind,
         state: VoiceBloggerActivityAttributes.ContentState,
@@ -152,4 +165,5 @@ final class LiveActivityCoordinator {
             return Date(timeIntervalSinceNow: 15 * 60)
         }
     }
+#endif
 }
