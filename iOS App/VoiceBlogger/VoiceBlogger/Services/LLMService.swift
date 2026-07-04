@@ -45,7 +45,7 @@ final class LLMService: Sendable {
         let c = try await LLMModelFactory.shared.loadContainer(
             from: HubDownloader(),
             using: HuggingFaceTokenizerLoader(),
-            configuration: ModelConfiguration(id: kLLMModelID),
+            configuration: ModelConfiguration(id: ModelIDs.llm),
             progressHandler: { progress in
                 progressHandler?(progress)
             }
@@ -56,7 +56,7 @@ final class LLMService: Sendable {
     // Resolve the local HuggingFace cache directory for the LLM without any network I/O.
     // Returns nil if the model hasn't been downloaded yet or the cache is in an unexpected state.
     static func localModelDirectory() -> URL? {
-        guard let repoID = HuggingFace.Repo.ID(rawValue: kLLMModelID) else { return nil }
+        guard let repoID = HuggingFace.Repo.ID(rawValue: ModelIDs.llm) else { return nil }
         let cache = HubCache.default
 
         // Primary path: use the HF cache ref to resolve the exact commit snapshot.
@@ -78,7 +78,7 @@ final class LLMService: Sendable {
         // The repo folder name replaces "/" with "--" and is prefixed by kind:
         // models--mlx-community--Qwen2.5-1.5B-Instruct-4bit/snapshots/<commitHash>/
         guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let repoFolderName = "models--" + kLLMModelID.replacingOccurrences(of: "/", with: "--")
+        let repoFolderName = "models--" + ModelIDs.llm.replacingOccurrences(of: "/", with: "--")
         let snapshotsDir = caches
             .appendingPathComponent("huggingface/hub")
             .appendingPathComponent(repoFolderName)
@@ -134,7 +134,12 @@ final class LLMService: Sendable {
     // Uses the mlx-swift-lm 3.x AsyncStream<Generation> API.
     // Each yielded value is a text chunk from the .chunk(String) generation event.
     // nonisolated so this can be called from Task.detached contexts (e.g. generateBlogChunked).
-    nonisolated func generateStream(messages: [[String: String]], maxTokens: Int = 2048) -> AsyncThrowingStream<String, Error> {
+    nonisolated func generateStream(
+        messages: [[String: String]],
+        maxTokens: Int = 2048,
+        temperature: Float = 0.45,
+        clearCacheWhenDone: Bool = true
+    ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let cancellationBox = GenerationCancellationBox()
             let task = Task.detached(priority: .userInitiated) { [container] in
@@ -145,7 +150,7 @@ final class LLMService: Sendable {
                             input: UserInput(messages: messages, additionalContext: ["enable_thinking": false])
                         )
                         var params = GenerateParameters()
-                        params.temperature = 0.45
+                        params.temperature = temperature
                         params.topP = 0.9
                         params.repetitionPenalty = 1.15
                         params.repetitionContextSize = 96
@@ -187,16 +192,18 @@ final class LLMService: Sendable {
                             generationTask.cancel()
                         }
                         await generationTask.value
-                        MLX.Memory.clearCache()
+                        if clearCacheWhenDone {
+                            MLX.Memory.clearCache()
+                        }
                     }
                     continuation.finish()
                 } catch is CancellationError {
                     cancellationBox.cancel()
-                    MLX.Memory.clearCache()
+                    if clearCacheWhenDone { MLX.Memory.clearCache() }
                     continuation.finish()
                 } catch {
                     cancellationBox.cancel()
-                    MLX.Memory.clearCache()
+                    if clearCacheWhenDone { MLX.Memory.clearCache() }
                     continuation.finish(throwing: error)
                 }
             }
@@ -209,13 +216,34 @@ final class LLMService: Sendable {
 
     // Collects an entire generateStream call into a single String (no streaming to caller).
     // Used for intermediate chunk-summary passes in the chunked blog generation path.
-    nonisolated private func collectStream(messages: [[String: String]], maxTokens: Int) async throws -> String {
+    nonisolated private func collectStream(
+        messages: [[String: String]],
+        maxTokens: Int,
+        temperature: Float = 0.25,
+        clearCacheWhenDone: Bool = false
+    ) async throws -> String {
         var result = ""
-        for try await token in generateStream(messages: messages, maxTokens: maxTokens) {
+        for try await token in generateStream(
+            messages: messages,
+            maxTokens: maxTokens,
+            temperature: temperature,
+            clearCacheWhenDone: clearCacheWhenDone
+        ) {
             try Task.checkCancellation()
             result += token
         }
         return result
+    }
+
+    func polishTranscript(_ transcript: String) async throws -> String {
+        let messages: [[String: String]] = [
+            ["role": "system", "content": """
+            Clean up a voice transcript. Remove filler words and false starts. Fix punctuation and paragraph breaks.
+            Do not add new facts. Return only the polished transcript.
+            """],
+            ["role": "user", "content": transcript]
+        ]
+        return try await collectStream(messages: messages, maxTokens: 800, temperature: 0.2, clearCacheWhenDone: false)
     }
 
     // Multi-pass path: summarise each chunk then synthesise into the detected content type.
@@ -236,20 +264,25 @@ final class LLMService: Sendable {
                 do {
                     let chunks = PromptBuilder.splitIntoChunks(transcript)
                     var summaries: [String] = []
+                    summaries.reserveCapacity(chunks.count)
 
-                    for (index, chunk) in chunks.enumerated() {
-                        try Task.checkCancellation()
-                        onPhaseChange?("Analyzing part \(index + 1) of \(chunks.count)…")
-                        let messages = PromptBuilder.chunkSummaryMessages(for: chunk, index: index, of: chunks.count)
-                        let summary = try await self.collectStream(messages: messages, maxTokens: 400)
-                        summaries.append(summary)
+                    if DeviceRAMTier.current == .ample && chunks.count > 1 {
+                        summaries = try await self.mapChunksParallel(chunks)
+                    } else {
+                        for (index, chunk) in chunks.enumerated() {
+                            try Task.checkCancellation()
+                            onPhaseChange?("Analyzing part \(index + 1) of \(chunks.count)…")
+                            let messages = PromptBuilder.chunkSummaryMessages(for: chunk, index: index, of: chunks.count)
+                            let summary = try await self.collectStream(messages: messages, maxTokens: 250)
+                            summaries.append(summary)
+                        }
                     }
 
                     try Task.checkCancellation()
                     onPhaseChange?("Writing \(contentKind.displayName.lowercased())...")
 
                     let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)
-                    for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800) {
+                    for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800, clearCacheWhenDone: true) {
                         try Task.checkCancellation()
                         if case .terminated = continuation.yield(token) { break }
                     }
@@ -262,6 +295,29 @@ final class LLMService: Sendable {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    nonisolated private func mapChunksParallel(_ chunks: [String]) async throws -> [String] {
+        var summaries = Array(repeating: "", count: chunks.count)
+        let width = 2
+        var index = 0
+        while index < chunks.count {
+            let end = min(index + width, chunks.count)
+            try await withThrowingTaskGroup(of: (Int, String).self) { group in
+                for i in index..<end {
+                    group.addTask {
+                        let messages = PromptBuilder.chunkSummaryMessages(for: chunks[i], index: i, of: chunks.count)
+                        let summary = try await self.collectStream(messages: messages, maxTokens: 250)
+                        return (i, summary)
+                    }
+                }
+                for try await (i, summary) in group {
+                    summaries[i] = summary
+                }
+            }
+            index = end
+        }
+        return summaries
     }
 
     func generateContent(
@@ -280,7 +336,8 @@ final class LLMService: Sendable {
         }
         return generateStream(
             messages: PromptBuilder.contentMessages(transcript: transcript, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated),
-            maxTokens: 1800
+            maxTokens: 1800,
+            clearCacheWhenDone: true
         )
     }
 

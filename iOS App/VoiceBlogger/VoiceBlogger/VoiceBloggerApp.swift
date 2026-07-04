@@ -24,7 +24,7 @@ struct VoiceBloggerApp: App {
     @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([BlogPost.self])
+        let schema = Schema([BlogPost.self, CustomVocabularyEntry.self, CustomDictationMode.self])
         let storeURL = URL.applicationSupportDirectory.appendingPathComponent("VoiceBlogger-v2.store")
         let config = ModelConfiguration("VoiceBloggerV2", schema: schema, url: storeURL)
         do {
@@ -56,6 +56,7 @@ struct VoiceBloggerApp: App {
                 .environment(audioRecorder)
                 .environment(downloadManager)
                 .task {
+                    BackgroundTranscriptionScheduler.register()
                     audioRecorder.recoverStaleRecordingActivityIfNeeded()
                     // Skip model gating entirely during UI tests so views are reachable
                     // without downloading ~2.5 GB of models on every test run.

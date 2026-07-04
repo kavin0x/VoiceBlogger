@@ -20,16 +20,55 @@ enum PromptBuilder {
 
     nonisolated static func splitIntoChunks(_ transcript: String) -> [String] {
         guard needsChunking(transcript) else { return [transcript] }
+
+        let paragraphs = transcript.components(separatedBy: "\n\n")
         var chunks: [String] = []
-        var start = transcript.startIndex
-        let stride = chunkSize - chunkOverlap
-        while start < transcript.endIndex {
-            let remaining = transcript.distance(from: start, to: transcript.endIndex)
-            let end = transcript.index(start, offsetBy: min(chunkSize, remaining))
-            chunks.append(String(transcript[start..<end]))
-            if end == transcript.endIndex { break }
-            start = transcript.index(start, offsetBy: min(stride, remaining))
+        var current = ""
+
+        func flush() {
+            let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { chunks.append(trimmed) }
+            current = ""
         }
+
+        for paragraph in paragraphs {
+            let piece = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !piece.isEmpty else { continue }
+
+            if current.isEmpty {
+                current = piece
+            } else if current.count + piece.count + 2 <= chunkSize {
+                current += "\n\n" + piece
+            } else {
+                flush()
+                if piece.count <= chunkSize {
+                    current = piece
+                } else {
+                    // Fall back to sentence boundaries within oversized paragraphs.
+                    chunks.append(contentsOf: splitOversizedParagraph(piece))
+                }
+            }
+        }
+        flush()
+        return chunks.isEmpty ? [transcript] : chunks
+    }
+
+    nonisolated private static func splitOversizedParagraph(_ text: String) -> [String] {
+        let sentences = text.split(whereSeparator: { ".!?".contains($0) })
+        var chunks: [String] = []
+        var current = ""
+        for sentence in sentences {
+            let s = String(sentence).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !s.isEmpty else { continue }
+            let candidate = current.isEmpty ? s : current + ". " + s
+            if candidate.count <= chunkSize {
+                current = candidate
+            } else {
+                if !current.isEmpty { chunks.append(current) }
+                current = s
+            }
+        }
+        if !current.isEmpty { chunks.append(current) }
         return chunks
     }
 
@@ -67,7 +106,7 @@ enum PromptBuilder {
         case .blogPost:
             "Create the most useful written output from this voice transcript (~\(wordCount) words). Use common sense to decide whether it should read as a blog post, meeting notes, or personal notes. Match the structure and length to the actual content."
         case .meetingNotes, .notes:
-            "Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Match the structure and length to the actual content."
+            "Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Follow the \(contentKind.displayName.lowercased()) format exactly. Match the structure and length to the actual content."
         }
         let user = """
         \(request)

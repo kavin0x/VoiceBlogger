@@ -19,6 +19,7 @@ struct BlogView: View {
     @State private var didComplete = false
     @State private var isEditing = false
     @State private var editableText = ""
+    @State private var showCopiedFeedback = false
     @State private var generationTask: Task<Void, Never>?
 
     var contentKind: GeneratedContentKind {
@@ -76,8 +77,21 @@ struct BlogView: View {
                     }
 
                     if !displayText.isEmpty && !isGenerating {
-                        Divider()
                         HStack(spacing: 12) {
+                            Button {
+                                UIPasteboard.general.string = shareText
+                                HapticFeedback.success()
+                                showCopiedFeedback = true
+                                Task {
+                                    try? await Task.sleep(for: .seconds(1.5))
+                                    showCopiedFeedback = false
+                                }
+                            } label: {
+                                Label(showCopiedFeedback ? "Copied!" : "Copy", systemImage: "doc.on.doc")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+
                             Button {
                                 appState.navigateTo(.viewingInstagram(post: post))
                             } label: {
@@ -177,11 +191,6 @@ struct BlogView: View {
             .onAppear {
                 startGenerationTask()
             }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase != .active {
-                    cancelGenerationForBackground()
-                }
-            }
             .onDisappear {
                 cancelGenerationTask()
                 downloadManager.releaseLLMService()
@@ -204,12 +213,6 @@ struct BlogView: View {
         if isGenerating {
             downloadManager.releaseLLMService()
         }
-    }
-
-    private func cancelGenerationForBackground() {
-        guard isGenerating else { return }
-        cancelGenerationTask()
-        generationError = "Generation stopped because the app left the foreground. Regenerate \(contentKind.displayName.lowercased()) to try again."
     }
 
     private func commitEdits() {
@@ -254,13 +257,17 @@ struct BlogView: View {
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
+            let vocabularyHint = VocabularyStore.promptInjection(from: modelContext)
+            let transcriptForGeneration = vocabularyHint.isEmpty
+                ? transcript
+                : "\(vocabularyHint)\n\n\(transcript)"
             let detectedKind = BlogGenerationHandoff.contentKind(
                 for: transcript,
                 speakerCount: post.detectedSpeakerCount,
                 automaticDetectionEnabled: automaticContentKindDetectionEnabled
             )
             let isSpeakerAnnotated = false
-            for try await chunk in service.generateContent(transcript: transcript, contentKind: detectedKind, isSpeakerAnnotated: isSpeakerAnnotated, onPhaseChange: { phase in
+            for try await chunk in service.generateContent(transcript: transcriptForGeneration, contentKind: detectedKind, isSpeakerAnnotated: isSpeakerAnnotated, onPhaseChange: { phase in
                 Task { @MainActor in generationPhase = phase }
             }) {
                 if Task.isCancelled { return }

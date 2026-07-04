@@ -29,14 +29,26 @@ enum AppStage: Equatable {
     }
 }
 
+enum MainTab: String, CaseIterable {
+    case record
+    case history
+    case settings
+}
+
 @Observable
 final class AppState {
     var stage: AppStage = .recording
+    var selectedTab: MainTab = .record
     var errorMessage: String?
     var showError = false
     @ObservationIgnored var generationModelContext: ModelContext?
 
     func navigateTo(_ stage: AppStage) {
+        if stage == .history {
+            selectedTab = .history
+            self.stage = .recording
+            return
+        }
         self.stage = stage
     }
 

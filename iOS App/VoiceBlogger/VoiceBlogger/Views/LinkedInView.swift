@@ -81,11 +81,6 @@ struct LinkedInView: View {
             .onAppear {
                 startGenerationTask()
             }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase != .active {
-                    cancelGenerationForBackground()
-                }
-            }
             .onDisappear {
                 cancelGenerationTask()
             }
@@ -106,12 +101,6 @@ struct LinkedInView: View {
         if isGenerating {
             downloadManager.releaseLLMService()
         }
-    }
-
-    private func cancelGenerationForBackground() {
-        guard isGenerating else { return }
-        cancelGenerationTask()
-        generationError = "Generation stopped because the app left the foreground. Try again when the app is active."
     }
 
     private var postCardView: some View {

@@ -89,7 +89,17 @@ struct VoiceBloggerLiveActivityWidget: Widget {
     private func expandedBottom(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
         switch context.attributes.kind {
         case .recording:
-            EmptyView()
+            VStack(alignment: .leading, spacing: 4) {
+                if let count = context.state.wordCount, count > 0 {
+                    Text("\(count) words")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                Text(context.state.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
         case .downloading:
             VStack(alignment: .leading, spacing: 6) {
                 Text(context.state.detail)

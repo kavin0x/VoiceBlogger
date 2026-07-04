@@ -80,3 +80,7 @@ fastlane/test_output
 
 
 Android-App/
+
+
+.cursor/
+.codegraph

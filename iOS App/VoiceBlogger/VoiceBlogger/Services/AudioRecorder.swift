@@ -13,10 +13,12 @@ final class AudioRecorder: NSObject {
     var currentAudioURL: URL?
     var permissionGranted = false
     var permissionDenied = false
-    /// Grows word-by-word as background chunk transcription completes during recording.
+    /// Grows word-by-word as background chunk transcription completes during recording (preview only).
     var liveTranscript: String = ""
-    /// True while the tail chunk (audio after the last 30s boundary) is being transcribed post-stop.
+    /// True while the tail chunk is being transcribed post-stop.
     var isFinalizingTranscript: Bool = false
+    /// True when live text is a preview; a full-file pass will refine it.
+    var isLivePreview: Bool = false
 
     private var audioEngine: AVAudioEngine?
     private var levelTimer: Timer?
@@ -33,7 +35,7 @@ final class AudioRecorder: NSObject {
     @ObservationIgnored nonisolated(unsafe) private var outputAudioFile: AVAudioFile?
     @ObservationIgnored nonisolated(unsafe) private var audioConverter: AVAudioConverter?
     @ObservationIgnored nonisolated(unsafe) private var activeWhisperKit: WhisperKit?
-    @ObservationIgnored nonisolated(unsafe) private var sampleAccumulator: [Float] = []
+    @ObservationIgnored nonisolated(unsafe) private var sampleRingBuffer: SampleRingBuffer?
     @ObservationIgnored nonisolated(unsafe) private var chunkTaskIndex: Int = 0
     @ObservationIgnored nonisolated(unsafe) private var chainedTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var latestAudioLevel: Float = -60
@@ -42,8 +44,20 @@ final class AudioRecorder: NSObject {
     @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
     @ObservationIgnored private let liveActivity = LiveActivityCoordinator()
 
-    // 15 seconds of 16kHz mono audio — half a Whisper window, gives faster live feedback
-    nonisolated private static let chunkSampleCount = 15 * 16_000
+    // Adaptive chunk advance by device tier; overlap reduces word cuts at boundaries.
+    nonisolated private static var chunkAdvanceSamples: Int {
+        switch DeviceRAMTier.current {
+        case .ample: return 10 * 16_000
+        case .standard: return 15 * 16_000
+        case .constrained: return 20 * 16_000
+        }
+    }
+
+    nonisolated private static let chunkOverlapSamples = Int(2.5 * 16_000)
+
+    nonisolated private static var chunkWindowSamples: Int {
+        chunkAdvanceSamples + chunkOverlapSamples
+    }
 
     override init() {
         super.init()
@@ -79,10 +93,11 @@ final class AudioRecorder: NSObject {
         // Reset live transcription state and drain any in-flight sampleQueue work
         liveTranscript = ""
         isFinalizingTranscript = false
+        isLivePreview = false
         sampleQueue.sync {
             chainedTask?.cancel()
             chainedTask = nil
-            sampleAccumulator = []
+            sampleRingBuffer = SampleRingBuffer()
             chunkTaskIndex = 0
             activeWhisperKit = nil
         }
@@ -192,14 +207,15 @@ final class AudioRecorder: NSObject {
         // sampleQueue will clear the flag if no tail samples remain.
         if activeWhisperKit != nil {
             isFinalizingTranscript = true
+            isLivePreview = !liveTranscript.isEmpty
         }
 
         sampleQueue.async { [weak self] in
             guard let self else { return }
-            let remaining = self.sampleAccumulator
-            self.sampleAccumulator = []
+            let remaining = self.sampleRingBuffer?.drainAll() ?? []
             let wk = self.activeWhisperKit
             self.activeWhisperKit = nil
+            self.sampleRingBuffer = nil
 
             if !remaining.isEmpty, let whisperKit = wk {
                 let idx = self.chunkTaskIndex
@@ -232,6 +248,7 @@ final class AudioRecorder: NSObject {
         latestAudioLevel = -60
         isFinalizingTranscript = false
         liveTranscript = ""
+        isLivePreview = false
         IntentStorage.clearRecordingActive()
         liveActivity.endRecording()
         Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
@@ -244,7 +261,7 @@ final class AudioRecorder: NSObject {
             guard let self else { return }
             self.chainedTask?.cancel()
             self.chainedTask = nil
-            self.sampleAccumulator = []
+            self.sampleRingBuffer = nil
             self.activeWhisperKit = nil
         }
     }
@@ -287,17 +304,20 @@ final class AudioRecorder: NSObject {
 
         sampleQueue.async { [weak self] in
             guard let self else { return }
-            self.sampleAccumulator.append(contentsOf: newSamples)
+            if self.sampleRingBuffer == nil {
+                self.sampleRingBuffer = SampleRingBuffer()
+            }
+            self.sampleRingBuffer?.append(newSamples)
 
-            // Fire a transcription task for each complete 15s window
-            while self.sampleAccumulator.count >= Self.chunkSampleCount {
+            while self.sampleRingBuffer?.count ?? 0 >= Self.chunkWindowSamples {
                 guard let wk = self.activeWhisperKit else {
-                    // WhisperKit not available — drain the window and skip
-                    self.sampleAccumulator = Array(self.sampleAccumulator.dropFirst(Self.chunkSampleCount))
+                    _ = self.sampleRingBuffer?.takeAdvance(count: Self.chunkAdvanceSamples)
                     continue
                 }
-                let chunk = Array(self.sampleAccumulator.prefix(Self.chunkSampleCount))
-                self.sampleAccumulator = Array(self.sampleAccumulator.dropFirst(Self.chunkSampleCount))
+                guard let chunk = self.sampleRingBuffer?.takeWindow(
+                    window: Self.chunkWindowSamples,
+                    advance: Self.chunkAdvanceSamples
+                ) else { break }
                 let idx = self.chunkTaskIndex
                 self.chunkTaskIndex += 1
                 self.enqueueTranscription(samples: chunk, index: idx, isFinal: false, whisperKit: wk)
@@ -328,8 +348,10 @@ final class AudioRecorder: NSObject {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if !text.isEmpty {
-                    if !self.liveTranscript.isEmpty { self.liveTranscript += " " }
-                    self.liveTranscript += text
+                    self.liveTranscript = TranscriptMergeUtility.merge(existing: self.liveTranscript, newChunk: text)
+                    self.isLivePreview = true
+                    let words = self.liveTranscript.split(whereSeparator: \.isWhitespace).count
+                    self.liveActivity.updateRecordingWordCount(words, startedAt: self.recordingStartTime)
                 }
                 if isFinal {
                     self.isFinalizingTranscript = false
@@ -340,16 +362,7 @@ final class AudioRecorder: NSObject {
 
     nonisolated private static func transcribeChunk(_ samples: [Float], whisperKit: WhisperKit) async -> String {
         let suppressTokens = TranscriptionService.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let options = DecodingOptions(
-            task: .transcribe,
-            language: nil,
-            temperature: 0,
-            usePrefillPrompt: false,
-            suppressBlank: true,
-            suppressTokens: suppressTokens,
-            noSpeechThreshold: 0.1,
-            chunkingStrategy: ChunkingStrategy.none
-        )
+        let options = TranscriptionService.liveChunkDecodingOptions(suppressTokens: suppressTokens)
         do {
             let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
             let rawText = results.map(\.text).joined(separator: " ")
@@ -434,14 +447,15 @@ final class AudioRecorder: NSObject {
             audioLevels = Array(repeating: -60, count: 30)
             latestAudioLevel = -60
             isFinalizingTranscript = false
+            // Preserve partial live transcript and audio file for recovery
             IntentStorage.clearRecordingActive()
             liveActivity.endRecording()
 
             sampleQueue.async { [weak self] in
-                self?.chainedTask?.cancel()
-                self?.chainedTask = nil
-                self?.sampleAccumulator = []
-                self?.activeWhisperKit = nil
+                guard let self else { return }
+                self.chainedTask?.cancel()
+                self.chainedTask = nil
+                self.activeWhisperKit = nil
             }
 
         case .ended:
@@ -495,6 +509,50 @@ final class AudioRecorder: NSObject {
     func recoverStaleRecordingActivityIfNeeded() {
         guard !isRecording, IntentStorage.consumeRecordingActive() else { return }
         liveActivity.endRecording()
+    }
+}
+
+// MARK: - Sample ring buffer (reduces allocations in the audio hot path)
+
+private final class SampleRingBuffer: @unchecked Sendable {
+    private var storage: [Float] = []
+    private let lock = NSLock()
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage.count
+    }
+
+    func append(_ samples: [Float]) {
+        lock.lock()
+        storage.append(contentsOf: samples)
+        lock.unlock()
+    }
+
+    func takeWindow(window: Int, advance: Int) -> [Float]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard storage.count >= window else { return nil }
+        let chunk = Array(storage.prefix(window))
+        storage.removeFirst(min(advance, storage.count))
+        return chunk
+    }
+
+    func takeAdvance(count: Int) -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let removed = min(count, storage.count)
+        storage.removeFirst(removed)
+        return []
+    }
+
+    func drainAll() -> [Float] {
+        lock.lock()
+        defer { lock.unlock() }
+        let all = storage
+        storage = []
+        return all
     }
 }
 

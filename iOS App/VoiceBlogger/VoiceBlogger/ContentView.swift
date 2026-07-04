@@ -85,8 +85,8 @@ struct ContentView: View {
         case .modelDownload:
             ModelDownloadView()
 
-        case .recording:
-            RecordingView()
+        case .recording, .history:
+            MainTabView()
 
         case .transcribing(let post):
             TranscriptionView(post: post)
@@ -107,7 +107,7 @@ struct ContentView: View {
             LinkedInView(post: post)
 
         case .history:
-            BlogListView()
+            MainTabView()
         }
     }
 

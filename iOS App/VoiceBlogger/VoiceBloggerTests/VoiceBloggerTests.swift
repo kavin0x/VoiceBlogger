@@ -269,4 +269,19 @@ struct VoiceBloggerTests {
         #expect(TranscriptionService.filterTokens(text) == "Today I want to talk about launch notes.")
     }
 
+    @Test func transcriptMergeDedupesOverlappingWords() {
+        let existing = "The quick brown fox jumps"
+        let newChunk = "fox jumps over the lazy dog"
+        #expect(TranscriptMergeUtility.merge(existing: existing, newChunk: newChunk) == "The quick brown fox jumps over the lazy dog")
+    }
+
+    @Test func transcriptMergeHandlesEmptyExisting() {
+        #expect(TranscriptMergeUtility.merge(existing: "", newChunk: "Hello world") == "Hello world")
+    }
+
+    @Test func transcriptMergeSkipsDuplicateChunk() {
+        let existing = "one two three"
+        #expect(TranscriptMergeUtility.merge(existing: existing, newChunk: "two three") == "one two three")
+    }
+
 }

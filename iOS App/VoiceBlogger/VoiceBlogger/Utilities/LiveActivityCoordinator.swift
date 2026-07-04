@@ -19,7 +19,24 @@ final class LiveActivityCoordinator {
             detail: "Voice Blogger",
             progress: nil,
             startedAt: startedAt,
-            symbolName: "mic.fill"
+            symbolName: "mic.fill",
+            wordCount: 0
+        )
+        startOrUpdate(kind: .recording, state: state, relevanceScore: 100)
+#endif
+    }
+
+    func updateRecordingWordCount(_ count: Int, startedAt: Date?) {
+#if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let detail = count > 0 ? "\(count) words transcribed" : "Voice Blogger"
+        let state = VoiceBloggerActivityAttributes.ContentState(
+            title: "Recording",
+            detail: detail,
+            progress: nil,
+            startedAt: startedAt,
+            symbolName: "mic.fill",
+            wordCount: count
         )
         startOrUpdate(kind: .recording, state: state, relevanceScore: 100)
 #endif
@@ -32,7 +49,8 @@ final class LiveActivityCoordinator {
             detail: "Ready to transcribe",
             progress: nil,
             startedAt: nil,
-            symbolName: "checkmark.circle.fill"
+            symbolName: "checkmark.circle.fill",
+            wordCount: nil
         )
         end(kind: .recording, state: state)
 #endif
@@ -51,7 +69,8 @@ final class LiveActivityCoordinator {
             detail: detail,
             progress: min(max(progress, 0), 1),
             startedAt: nil,
-            symbolName: "arrow.down.circle.fill"
+            symbolName: "arrow.down.circle.fill",
+            wordCount: nil
         )
         startOrUpdate(kind: .downloading, state: state, relevanceScore: 80)
 #endif
@@ -64,7 +83,8 @@ final class LiveActivityCoordinator {
             detail: isComplete ? "Voice Blogger works offline" : "Open the app to resume",
             progress: isComplete ? 1 : nil,
             startedAt: nil,
-            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle"
+            symbolName: isComplete ? "checkmark.circle.fill" : "pause.circle",
+            wordCount: nil
         )
         end(kind: .downloading, state: state)
 #endif

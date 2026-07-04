@@ -14,6 +14,7 @@ nonisolated struct VoiceBloggerActivityAttributes: ActivityAttributes {
         var progress: Double?
         var startedAt: Date?
         var symbolName: String
+        var wordCount: Int?
     }
 
     var kind: ActivityKind
@@ -33,6 +34,7 @@ nonisolated struct VoiceBloggerActivityAttributes {
         var progress: Double?
         var startedAt: Date?
         var symbolName: String
+        var wordCount: Int?
     }
 
     var kind: ActivityKind

@@ -22,5 +22,23 @@ struct VoiceBloggerShortcuts: AppShortcutsProvider {
             shortTitle: "Stop Recording",
             systemImageName: "stop.fill"
         )
+        AppShortcut(
+            intent: DictateToClipboardIntent(),
+            phrases: [
+                "Dictate to clipboard in \(.applicationName)",
+                "Voice note to clipboard in \(.applicationName)"
+            ],
+            shortTitle: "Dictate to Clipboard",
+            systemImageName: "doc.on.clipboard"
+        )
+        AppShortcut(
+            intent: QuickNoteIntent(),
+            phrases: [
+                "Quick note in \(.applicationName)",
+                "Capture a note in \(.applicationName)"
+            ],
+            shortTitle: "Quick Note",
+            systemImageName: "note.text"
+        )
     }
 }

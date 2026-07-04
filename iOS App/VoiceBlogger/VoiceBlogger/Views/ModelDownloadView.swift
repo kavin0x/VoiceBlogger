@@ -1,13 +1,13 @@
 import SwiftUI
 
-// Sizes verified from HuggingFace model repositories (argmaxinc/whisperkit-coreml, mlx-community)
-private let kWhisperDownloadSize = "~1.5 GB"
-private let kLLMDownloadSize = "~1.0 GB"
-private let kTotalDownloadSize = "~2.5 GB"
-
 struct ModelDownloadView: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(AppState.self) var appState
+    @State private var selectedQuality = ModelQualityLevel.recommended
+    @State private var hasChosenQuality = ModelQualityLevel.current != ModelQualityLevel.recommended
+        || UserDefaults.standard.bool(forKey: "whisperModelReady_v4")
+
+    private var quality: ModelQualityLevel { selectedQuality }
 
     var body: some View {
         VStack(spacing: 32) {
@@ -20,24 +20,42 @@ struct ModelDownloadView: View {
                     .accessibilityHidden(true)
                 Text("Setting Up VoiceBlogger")
                     .font(.title2.bold())
-                Text("AI models download once, continue in the background when iOS allows, and resume completed files automatically. After setup, the app works fully offline.")
+                Text("AI models download once and work fully offline. Choose a quality level — you can change this before downloading starts.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
+            if !hasChosenQuality && !downloadManager.isDownloading && !downloadManager.allModelsReady {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Quality Level")
+                        .font(.headline)
+                    Picker("Quality", selection: $selectedQuality) {
+                        ForEach(ModelQualityLevel.allCases, id: \.self) { level in
+                            Text("\(level.displayName) · \(level.totalDownloadSizeLabel)")
+                                .tag(level)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    Text(selectedQuality.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+            }
+
             VStack(spacing: 20) {
                 DownloadRowView(
                     icon: "waveform",
-                    title: "Advanced Speech Recognition",
-                    subtitle: "Supports 90+ languages · \(kWhisperDownloadSize) · resumable",
+                    title: "Speech Recognition",
+                    subtitle: "90+ languages · \(quality.whisperDownloadSizeLabel) · resumable",
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
                 DownloadRowView(
                     icon: "text.bubble.fill",
-                    title: "Blog Generator",
-                    subtitle: "\(kLLMDownloadSize) · resumable parts",
+                    title: "Writing Assistant",
+                    subtitle: "\(quality.llmDownloadSizeLabel) · resumable",
                     progress: downloadManager.llmProgress,
                     isReady: downloadManager.isLLMReady
                 )
@@ -70,10 +88,12 @@ struct ModelDownloadView: View {
                 ProgressView("")
             } else {
                 VStack(spacing: 8) {
-                    Text("Total download: \(kTotalDownloadSize) · resumes where it left off")
+                    Text("Total download: \(quality.totalDownloadSizeLabel)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Button("Download AI Models") {
+                        ModelQualityLevel.select(selectedQuality, forNewInstall: !hasChosenQuality)
+                        hasChosenQuality = true
                         Task { await downloadManager.downloadAll() }
                     }
                     .buttonStyle(.borderedProminent)
@@ -85,17 +105,18 @@ struct ModelDownloadView: View {
         }
         .padding()
         .frame(maxWidth: 560)
-        .task {
-            // If models are already on disk (e.g. returning user after an app update),
-            // skip the download screen entirely and go straight to recording.
+        .onAppear {
+            selectedQuality = ModelQualityLevel.current
             if downloadManager.allModelsReady {
                 appState.navigateTo(.recording)
                 return
             }
+            hasChosenQuality = UserDefaults.standard.bool(forKey: "whisperModelReady_v4")
             downloadManager.continuePendingDownloadIfNeeded()
         }
         .onChange(of: downloadManager.allModelsReady) { _, ready in
             guard ready else { return }
+            ModelQualityLevel.lockExistingInstall(to: ModelQualityLevel.current)
             Task {
                 try? await Task.sleep(for: .milliseconds(800))
                 appState.navigateTo(.recording)

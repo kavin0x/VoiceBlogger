@@ -46,7 +46,7 @@ final class TranscriptionService: @unchecked Sendable {
         // Pass modelFolder when files are on disk so WhisperKit skips all network calls.
         let localDir = localWhisperModelDirectory()
         let config = WhisperKitConfig(
-            model: localDir == nil ? kWhisperModelID : nil,
+            model: localDir == nil ? ModelIDs.whisper : nil,
             modelFolder: localDir?.path,
             computeOptions: whisperComputeOptions()
         )
@@ -76,7 +76,7 @@ final class TranscriptionService: @unchecked Sendable {
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
         let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
 
-        let canonical = whisperCacheDir.appendingPathComponent(kWhisperModelID)
+        let canonical = whisperCacheDir.appendingPathComponent(ModelIDs.whisper)
         if directoryContainsFiles(canonical) { return canonical }
 
         guard let entries = try? fm.contentsOfDirectory(
@@ -126,48 +126,7 @@ final class TranscriptionService: @unchecked Sendable {
         try validateAudioFile(at: audioURL)
 
         let suppressTokens = Self.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let options: DecodingOptions
-        switch mode {
-        case .transcribe(let language):
-            // Disable prefill when language is nil so Whisper performs true auto-detection.
-            // With usePrefillPrompt: true and no explicit language, WhisperKit primes the
-            // decoder with the device locale (often English), causing Whisper to output
-            // "[Speaking in a foreign language]" instead of transcribing multilingual audio.
-            // Avoid VAD chunking for saved recordings. It is faster, but it can cut off
-            // conversational context and worsen accuracy around short replies or pauses.
-            // temperature: 0.0 starts greedy; WhisperKit falls back through higher
-            // temperatures (up to 5 increments of 0.2) when compressionRatioThreshold
-            // or logprobThreshold detects a bad decode. This rescues hesitant/accented
-            // speech openings that greedy decoding drops.
-            options = DecodingOptions(
-                task: .transcribe,
-                language: language,
-                temperature: 0.0,
-                temperatureIncrementOnFallback: 0.2,
-                temperatureFallbackCount: 5,
-                usePrefillPrompt: language != nil,
-                detectLanguage: true,
-                suppressTokens: suppressTokens,
-                compressionRatioThreshold: 2.4,
-                logProbThreshold: -1.0,
-                noSpeechThreshold: 0.6,
-                chunkingStrategy: ChunkingStrategy.none
-            )
-        case .translate:
-            options = DecodingOptions(
-                task: .translate,
-                temperature: 0.0,
-                temperatureIncrementOnFallback: 0.2,
-                temperatureFallbackCount: 5,
-                usePrefillPrompt: true,
-                skipSpecialTokens: true,
-                suppressTokens: suppressTokens,
-                compressionRatioThreshold: 2.4,
-                logProbThreshold: -1.0,
-                noSpeechThreshold: 0.6,
-                chunkingStrategy: ChunkingStrategy.none
-            )
-        }
+        let options = Self.decodingOptions(for: mode, suppressTokens: suppressTokens, livePreview: false)
 
         let previousStateCallback = whisperKit.transcriptionStateCallback
         whisperKit.transcriptionStateCallback = { state in
@@ -183,16 +142,11 @@ final class TranscriptionService: @unchecked Sendable {
         }
         defer { whisperKit.transcriptionStateCallback = previousStateCallback }
 
-        let results = try await whisperKit.transcribe(
+        let results = try await transcribeWithStallWatchdog(
+            whisperKit: whisperKit,
             audioPath: audioURL.path,
             decodeOptions: options,
-            callback: { progress in
-                let filtered = Self.filterTokens(progress.text)
-                if !filtered.isEmpty {
-                    onPartial?(filtered)
-                }
-                return true
-            }
+            onPartial: onPartial
         )
         let rawJoined = results.map { $0.text }.joined(separator: " ")
         let finalText = Self.filterTokens(rawJoined)
@@ -241,6 +195,117 @@ final class TranscriptionService: @unchecked Sendable {
             throw error
         } catch {
             throw TranscriptionError.unreadableAudio
+        }
+    }
+
+    /// Shared decode options for full-file and live-chunk transcription.
+    nonisolated static func decodingOptions(
+        for mode: TranscriptionMode,
+        suppressTokens: [Int],
+        livePreview: Bool
+    ) -> DecodingOptions {
+        switch mode {
+        case .transcribe(let language):
+            return DecodingOptions(
+                task: .transcribe,
+                language: language,
+                temperature: 0.0,
+                temperatureIncrementOnFallback: 0.2,
+                temperatureFallbackCount: 5,
+                usePrefillPrompt: language != nil,
+                detectLanguage: language == nil,
+                suppressBlank: livePreview,
+                suppressTokens: suppressTokens,
+                compressionRatioThreshold: 2.4,
+                logProbThreshold: -1.0,
+                noSpeechThreshold: 0.6,
+                chunkingStrategy: ChunkingStrategy.none
+            )
+        case .translate:
+            return DecodingOptions(
+                task: .translate,
+                temperature: 0.0,
+                temperatureIncrementOnFallback: 0.2,
+                temperatureFallbackCount: 5,
+                usePrefillPrompt: true,
+                skipSpecialTokens: true,
+                suppressBlank: livePreview,
+                suppressTokens: suppressTokens,
+                compressionRatioThreshold: 2.4,
+                logProbThreshold: -1.0,
+                noSpeechThreshold: 0.6,
+                chunkingStrategy: ChunkingStrategy.none
+            )
+        }
+    }
+
+    /// Live-chunk transcription uses the same quality settings as the full-file pass.
+    nonisolated static func liveChunkDecodingOptions(
+        suppressTokens: [Int],
+        mode: TranscriptionMode = TranscriptionSettings.transcriptionMode
+    ) -> DecodingOptions {
+        decodingOptions(for: mode, suppressTokens: suppressTokens, livePreview: true)
+    }
+
+    private static let stallTimeoutSeconds: TimeInterval = 120
+
+    private final class StallTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastProgressAt = ContinuousClock.now
+
+        func bump() {
+            lock.lock()
+            lastProgressAt = ContinuousClock.now
+            lock.unlock()
+        }
+
+        func isStalled(timeout: TimeInterval) -> Bool {
+            lock.lock()
+            let elapsed = ContinuousClock.now - lastProgressAt
+            lock.unlock()
+            return elapsed >= .seconds(timeout)
+        }
+    }
+
+    private func transcribeWithStallWatchdog(
+        whisperKit: WhisperKit,
+        audioPath: String,
+        decodeOptions: DecodingOptions,
+        onPartial: (@Sendable (String) -> Void)?
+    ) async throws -> [TranscriptionResult] {
+        let tracker = StallTracker()
+
+        return try await withThrowingTaskGroup(of: [TranscriptionResult].self) { group in
+            group.addTask {
+                try await whisperKit.transcribe(
+                    audioPath: audioPath,
+                    decodeOptions: decodeOptions,
+                    callback: { progress in
+                        let filtered = Self.filterTokens(progress.text)
+                        if !filtered.isEmpty {
+                            tracker.bump()
+                            onPartial?(filtered)
+                        }
+                        return true
+                    }
+                )
+            }
+            group.addTask {
+                tracker.bump()
+                while !Task.isCancelled {
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                    if tracker.isStalled(timeout: Self.stallTimeoutSeconds) {
+                        throw TranscriptionError.stalled
+                    }
+                }
+                try Task.checkCancellation()
+                throw CancellationError()
+            }
+            guard let result = try await group.next() else {
+                throw TranscriptionError.stalled
+            }
+            group.cancelAll()
+            return result
         }
     }
 

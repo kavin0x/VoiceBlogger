@@ -9,6 +9,7 @@ struct BlogGenerationPrepView: View {
 
     @State private var didStart = false
     @State private var error: String?
+    @State private var prepStep = "Preparing generator…"
 
     init(postID: UUID) {
         self.postID = postID
@@ -34,7 +35,7 @@ struct BlogGenerationPrepView: View {
                     .buttonStyle(.borderedProminent)
                 } else {
                     ProgressView()
-                    Text("Preparing Generator...")
+                    Text(prepStep)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -58,23 +59,35 @@ struct BlogGenerationPrepView: View {
             return
         }
 
-        let transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
+        var transcript = BlogGenerationHandoff.preparedTranscript(from: post.transcript)
         guard !transcript.isEmpty else {
             error = "Transcript is empty. Re-transcribe before generating content."
             return
         }
 
+        if TranscriptionSettings.polishTranscriptEnabled {
+            prepStep = "Polishing transcript…"
+            do {
+                await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
+                let llm = try await downloadManager.loadedLLMService()
+                transcript = try await llm.polishTranscript(transcript)
+                post.transcript = transcript
+            } catch {
+                // Polish is optional — continue with raw transcript.
+            }
+        }
+
         post.transcript = transcript
         post.transcriptionState = .complete
-        // Clear any previously generated content so BlogView always runs a fresh generation.
         post.blogContent = ""
         post.title = ""
         try? modelContext.save()
 
-        // releaseLLM: false — keep the LLM resident if it's already loaded so BlogView
-        // can start generating immediately instead of reloading from disk (~15–20 s).
-        // Whisper is still unloaded by prepareForLLMGeneration to reclaim CoreML memory.
+        prepStep = "Unloading speech model…"
         await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
+
+        prepStep = "Loading writing assistant…"
+        _ = try? await downloadManager.loadedLLMService()
 
         appState.navigateTo(.generatingBlog(post: post))
     }

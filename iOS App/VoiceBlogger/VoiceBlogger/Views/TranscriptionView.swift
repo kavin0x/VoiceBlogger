@@ -9,8 +9,10 @@ struct TranscriptionView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var isTranscribing = false
+    @State private var isRefining = false
     @State private var error: String?
     @State private var editableTranscript = ""
+    @State private var detectedLanguage: String?
 
     var body: some View {
         NavigationStack {
@@ -19,14 +21,27 @@ struct TranscriptionView: View {
                     Section {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Transcribing… Please keep the app open!")
+                            Text("Transcribing…")
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+                } else if isRefining {
+                    Section {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Refining transcript…")
+                                    .foregroundStyle(.secondary)
+                                Text("Preview shown below — final pass runs on the full recording.")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                 } else if let error {
                     Section {
                         Text(error).foregroundStyle(.red)
-                        Button("Retry") { runTranscription() }
+                        Button("Retry") { runTranscription(isRefinement: false) }
                         Button("Reset & Re-download Models", role: .destructive) {
                             downloadManager.resetDownloads()
                             appState.navigateTo(.modelDownload)
@@ -34,22 +49,20 @@ struct TranscriptionView: View {
                     }
                 }
 
-                if !isTranscribing && post.transcriptionState == .inProgress {
+                if !isTranscribing && post.transcriptionState == .inProgress && !isRefining {
                     if recorder.isFinalizingTranscript {
-                        // Last audio chunk is being transcribed in the background
                         Section {
                             HStack(spacing: 8) {
                                 ProgressView()
-                                Text("Finalizing transcript…")
+                                Text("Finalizing preview…")
                                     .foregroundStyle(.secondary)
                             }
                         }
-                    } else {
-                        // Crash-recovery banner for a genuinely interrupted transcription
+                    } else if post.transcript.isEmpty {
                         Section {
                             Label("Transcription was interrupted", systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
-                            Text("You can use the partial transcript below, re-transcribe from scratch, or generate a blog post from what's here.")
+                            Text("You can re-transcribe from scratch or generate from any partial transcript below.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -57,6 +70,25 @@ struct TranscriptionView: View {
                 }
 
                 if !post.transcript.isEmpty || !editableTranscript.isEmpty {
+                    if let audioURL = post.audioFileURL {
+                        Section {
+                            AudioPlayerView(audioURL: audioURL)
+                        }
+                    }
+
+                    Section {
+                        if recorder.isLivePreview || isRefining {
+                            Label("Preview", systemImage: "text.line.first.and.arrowtriangle.forward")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let detectedLanguage {
+                            Label("Detected: \(TranscriptionSettings.languageLabel(for: detectedLanguage))", systemImage: "globe")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     Section("Transcript") {
                         if isTranscribing {
                             ScrollView {
@@ -91,7 +123,7 @@ struct TranscriptionView: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(!BlogGenerationHandoff.canGenerateBlog(
                                 from: editableTranscript,
-                                isBusy: false
+                                isBusy: isRefining
                             ))
                         }
                         .listRowBackground(Color.clear)
@@ -107,23 +139,24 @@ struct TranscriptionView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if !isTranscribing && post.audioFileURL != nil &&
+                    if !isTranscribing && !isRefining && post.audioFileURL != nil &&
                         (post.transcriptionState != .untranscribed || !post.transcript.isEmpty) {
                         Button("Re-transcribe") {
                             post.transcript = ""
                             editableTranscript = ""
                             post.detectedSpeakerCount = 0
                             post.transcriptionState = .untranscribed
-                            runTranscription()
+                            detectedLanguage = nil
+                            runTranscription(isRefinement: false)
                         }
                     }
                 }
             }
             .onAppear {
                 editableTranscript = post.transcript
-                // Handle the case where finalization already completed before this view appeared
+                downloadManager.warmLLMIfNeeded()
                 if post.transcriptionState == .inProgress && !recorder.isFinalizingTranscript {
-                    applyLiveTranscript()
+                    applyLiveTranscriptAndRefine()
                 }
             }
             .onDisappear {
@@ -133,61 +166,84 @@ struct TranscriptionView: View {
             }
             .onChange(of: recorder.isFinalizingTranscript) { _, isFinalizing in
                 guard !isFinalizing, post.transcriptionState == .inProgress else { return }
-                applyLiveTranscript()
+                applyLiveTranscriptAndRefine()
             }
             .task {
                 if post.transcriptionState == .untranscribed {
-                    runTranscription()
+                    runTranscription(isRefinement: false)
                 }
             }
         }
     }
 
-    // Called when the background tail-chunk transcription finishes.
-    private func applyLiveTranscript() {
-        let finalText = recorder.liveTranscript.isEmpty ? post.transcript : recorder.liveTranscript
-        post.transcript = finalText
-        editableTranscript = finalText
-        post.detectedSpeakerCount = finalText.isEmpty ? 0 : 1
-        post.transcriptionState = finalText.isEmpty ? .untranscribed : .complete
+    /// Applies live preview text, then always runs the authoritative full-file pass.
+    private func applyLiveTranscriptAndRefine() {
+        let previewText = recorder.liveTranscript.isEmpty ? post.transcript : recorder.liveTranscript
+        guard !previewText.isEmpty else {
+            if post.transcriptionState == .inProgress {
+                runTranscription(isRefinement: false)
+            }
+            return
+        }
+        post.transcript = previewText
+        editableTranscript = previewText
+        post.detectedSpeakerCount = 1
+        recorder.isLivePreview = false
         try? modelContext.save()
+        runTranscription(isRefinement: true)
     }
 
-    private func runTranscription() {
+    private func runTranscription(isRefinement: Bool) {
         guard let audioURL = post.audioFileURL else {
             error = "Audio file not found. The recording may have been deleted."
             return
         }
-        isTranscribing = true
+        if isRefinement {
+            isRefining = true
+        } else {
+            isTranscribing = true
+        }
         error = nil
         post.transcriptionState = .inProgress
 
         Task {
             do {
                 let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
+                let mode = TranscriptionSettings.transcriptionMode
                 let finalTranscript = try await service.transcribe(
                     audioURL: audioURL,
-                    mode: .transcribe(language: nil),
+                    mode: mode,
                     onPartial: { partial in
                         Task { @MainActor in
-                            post.transcript = partial
-                            editableTranscript = partial
+                            if isRefinement {
+                                editableTranscript = partial
+                            } else {
+                                post.transcript = partial
+                                editableTranscript = partial
+                            }
                         }
                     }
                 )
-                // Free WhisperKit memory before any later LLM generation to prevent OOM.
-                await service.cleanup()
-                downloadManager.whisperKit = nil
+                // Keep Whisper warm until blog generation (deferred unload).
                 post.transcript = finalTranscript.displayText
                 editableTranscript = finalTranscript.displayText
                 post.detectedSpeakerCount = finalTranscript.detectedSpeakerCount
                 post.transcriptionState = .complete
+                if case .transcribe(let lang) = mode, let lang {
+                    detectedLanguage = lang
+                }
                 try? modelContext.save()
+                BackgroundTranscriptionScheduler.schedule(postID: post.id)
             } catch {
                 self.error = error.localizedDescription
-                // Leave state as .inProgress so the recovery banner shows on next open
+                if !isRefinement {
+                    post.transcriptionState = .inProgress
+                } else if !editableTranscript.isEmpty {
+                    post.transcriptionState = .complete
+                }
             }
             isTranscribing = false
+            isRefining = false
         }
     }
 
@@ -204,7 +260,7 @@ struct TranscriptionView: View {
     private func generateBlog() {
         guard BlogGenerationHandoff.canGenerateBlog(
             from: editableTranscript,
-            isBusy: false
+            isBusy: isRefining
         ) else {
             return
         }

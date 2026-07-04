@@ -10,8 +10,6 @@ struct RecordingView: View {
 
     @State private var showPermissionAlert = false
     @State private var showFilePicker = false
-    @State private var showResetConfirm = false
-    @State private var showAbout = false
     @State private var recordPulse = false
 
     var body: some View {
@@ -96,16 +94,22 @@ struct RecordingView: View {
 
                 // Live transcript display during recording
                 if recorder.isRecording && !recorder.liveTranscript.isEmpty {
-                    ScrollView {
-                        Text(recorder.liveTranscript)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Preview")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 24)
+                        ScrollView {
+                            Text(recorder.liveTranscript)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                        .frame(maxHeight: 200)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 24)
                     }
-                    .frame(maxHeight: 200)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 24)
                     .transition(.opacity)
                 }
 
@@ -124,43 +128,6 @@ struct RecordingView: View {
             .frame(maxWidth: 560)
             .navigationTitle("Voice Blogger")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        appState.navigateTo(.history)
-                    } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                    }
-                    .accessibilityLabel("History")
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Menu {
-                        Button("Settings", systemImage: "gearshape") {
-                            showAbout = true
-                        }
-                        Divider()
-                        Button("Reset & Re-download Models", systemImage: "arrow.trianglehead.2.clockwise", role: .destructive) {
-                            showResetConfirm = true
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Settings")
-                }
-            }
-            .confirmationDialog(
-                "Reset Models?",
-                isPresented: $showResetConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset & Re-download", role: .destructive) {
-                    downloadManager.resetDownloads()
-                    appState.navigateTo(.modelDownload)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This will delete all downloaded AI models and re-download them (~2.5 GB). Use this if a model fails to load.")
-            }
             .fileImporter(
                 isPresented: $showFilePicker,
                 allowedContentTypes: [.audio],
@@ -170,12 +137,18 @@ struct RecordingView: View {
                     importAudioFile(from: url)
                 }
             }
-            .sheet(isPresented: $showAbout) {
-                AboutView()
-                    .presentationDetents([.medium])
-            }
             .onAppear {
-                Task { await downloadManager.warmWhisper() }
+                Task {
+                    await downloadManager.warmWhisper()
+                    if recorder.isRecording, let kit = downloadManager.whisperKit {
+                        recorder.attachWhisperKit(kit)
+                    }
+                }
+            }
+            .onChange(of: downloadManager.hasLoadedWhisperKit) { _, _ in
+                if recorder.isRecording {
+                    recorder.attachWhisperKit(downloadManager.whisperKit)
+                }
             }
             .alert("Microphone Access Required", isPresented: $showPermissionAlert) {
                 Button("Open Settings") {
@@ -199,6 +172,11 @@ struct RecordingView: View {
             do {
                 await downloadManager.ensureWhisperWarm()
                 try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
+                HapticFeedback.recordToggle()
+                // Attach late if warm completes after recording started
+                if downloadManager.whisperKit != nil {
+                    recorder.attachWhisperKit(downloadManager.whisperKit)
+                }
                 // Permission denied during the request (first tap after denial)
                 if recorder.permissionDenied {
                     showPermissionAlert = true
@@ -211,6 +189,7 @@ struct RecordingView: View {
 
     private func stopAndTranscribe() {
         guard let audioURL = recorder.stopRecording() else { return }
+        HapticFeedback.recordToggle()
         let post = BlogPost(
             audioFilename: audioURL.lastPathComponent,
             duration: recorder.duration,

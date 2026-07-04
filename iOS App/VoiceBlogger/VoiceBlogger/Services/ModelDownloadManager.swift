@@ -7,9 +7,6 @@ import MLX
 import MLXLLM
 import MLXLMCommon
 
-let kLLMModelID = "mlx-community/Qwen2.5-1.5B-Instruct-4bit"
-let kWhisperModelID = "openai_whisper-medium"
-
 private let kWhisperReadyKey = "whisperModelReady_v4"
 private let kLLMReadyKey = "llmModelReady_v4"
 private let kModelDownloadStartedKey = "modelDownloadStarted_v1"
@@ -51,6 +48,7 @@ final class ModelDownloadManager {
 
     var allModelsReady: Bool { isWhisperReady && isLLMReady }
     var hasLoadedLLMService: Bool { llmService != nil }
+    var hasLoadedWhisperKit: Bool { whisperKit != nil }
 
     // Cache disk-scan results so repeated calls to validatePersistedModelReadiness
     // (warmWhisper, continuePendingDownloadIfNeeded, etc.) don't hammer the filesystem.
@@ -117,14 +115,14 @@ final class ModelDownloadManager {
 
     // Returns the local WhisperKit model directory if it exists and contains at least one file.
     // Checks the canonical path first, then scans the parent directory for any valid model
-    // folder — this catches cases where the folder name differs slightly from kWhisperModelID.
+    // folder — this catches cases where the folder name differs slightly from ModelIDs.whisper.
     private static func localWhisperModelDirectory() -> URL? {
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
         let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
 
         // Primary: exact match on the configured model ID.
-        let canonical = whisperCacheDir.appendingPathComponent(kWhisperModelID)
+        let canonical = whisperCacheDir.appendingPathComponent(ModelIDs.whisper)
         if directoryContainsFiles(canonical) { return canonical }
 
         // Fallback: scan siblings in case the folder was named differently
@@ -167,7 +165,7 @@ final class ModelDownloadManager {
         let task = Task { [weak self] in
             guard let self else { return }
             let config = WhisperKitConfig(
-                model: localDir == nil ? kWhisperModelID : nil,
+                model: localDir == nil ? ModelIDs.whisper : nil,
                 modelFolder: localDir?.path,
                 computeOptions: TranscriptionService.whisperComputeOptions()
             )
@@ -210,6 +208,12 @@ final class ModelDownloadManager {
         if whisperKit == nil {
             await warmWhisper()
         }
+    }
+
+    /// Pre-warm the LLM while the user reviews or edits a transcript.
+    func warmLLMIfNeeded() {
+        guard isLLMReady, llmService == nil, llmLoadTask == nil else { return }
+        Task { _ = try? await loadLLMService() }
     }
 
     var hasPendingDownload: Bool {
@@ -273,7 +277,7 @@ final class ModelDownloadManager {
             // pulls weights into memory, and that is deferred until after whisper unloads.
             let prefetchTask = Task.detached(priority: .userInitiated) { [weak self] in
                 return try? await resolve(
-                    configuration: ModelConfiguration(id: kLLMModelID),
+                    configuration: ModelConfiguration(id: ModelIDs.llm),
                     from: HubDownloader(),
                     useLatest: false,
                     progressHandler: { [weak self] progress in
@@ -408,7 +412,7 @@ final class ModelDownloadManager {
                 // pulling CoreML weights into RAM. No progress callback is available here,
                 // so animate smoothly to 0.45 while the ~800 MB transfer runs.
                 let config = WhisperKitConfig(
-                    model: kWhisperModelID,
+                    model: ModelIDs.whisper,
                     computeOptions: TranscriptionService.whisperComputeOptions(),
                     load: false
                 )

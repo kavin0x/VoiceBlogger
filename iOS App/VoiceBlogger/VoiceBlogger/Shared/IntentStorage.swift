@@ -6,6 +6,7 @@ enum IntentStorage {
     private static let startKey = "intentStartRecording"
     private static let stopKey = "intentStopRecording"
     private static let recordingActiveKey = "recordingActive"
+    private static let dictateClipboardKey = "intentDictateToClipboard"
     private static let darwinNotificationName = CFNotificationName("anup.VoiceBlogger.intentFlagsChanged" as CFString)
 
     private static var defaults: UserDefaults? {
@@ -47,6 +48,19 @@ enum IntentStorage {
         guard let defaults else { return false }
         let pending = defaults.bool(forKey: stopKey)
         if pending { defaults.removeObject(forKey: stopKey) }
+        return pending
+    }
+
+    static func markDictateToClipboardPending() {
+        guard let defaults else { return }
+        defaults.set(true, forKey: dictateClipboardKey)
+        postDarwinNotification()
+    }
+
+    static func consumeDictateToClipboardPending() -> Bool {
+        guard let defaults else { return false }
+        let pending = defaults.bool(forKey: dictateClipboardKey)
+        if pending { defaults.removeObject(forKey: dictateClipboardKey) }
         return pending
     }
 
