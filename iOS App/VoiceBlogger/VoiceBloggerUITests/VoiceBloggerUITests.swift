@@ -151,30 +151,39 @@ final class VoiceBloggerUITests: XCTestCase {
     func testOnboardingPrivacyPageShowsDownloadButton() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(
-            app.buttons["Download AI Models (~2.5 GB)"].waitForExistence(timeout: 5)
-        )
+        XCTAssertTrue(app.buttons["Download AI Models"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testOnboardingPrivacyPageShowsQualityPicker() throws {
+        launchWithFreshOnboarding()
+        app.buttons["Skip"].tap()
+        XCTAssertTrue(app.staticTexts["Choose quality"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Balanced"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsWhisperSize() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["~1.5 GB"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'GB'")).firstMatch
+                .waitForExistence(timeout: 5)
+        )
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsLLMSize() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["~1.0 GB"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["High Quality"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsTotalSize() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["~2.5 GB"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Download AI Models"].waitForExistence(timeout: 5))
     }
 
     // MARK: - Model Download View

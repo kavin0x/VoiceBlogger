@@ -27,21 +27,8 @@ struct ModelDownloadView: View {
             }
 
             if !hasChosenQuality && !downloadManager.isDownloading && !downloadManager.allModelsReady {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Quality Level")
-                        .font(.headline)
-                    Picker("Quality", selection: $selectedQuality) {
-                        ForEach(ModelQualityLevel.allCases, id: \.self) { level in
-                            Text("\(level.displayName) · \(level.totalDownloadSizeLabel)")
-                                .tag(level)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    Text(selectedQuality.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
+                ModelQualityPickerView(selection: $selectedQuality)
+                    .padding(.horizontal)
             }
 
             VStack(spacing: 20) {
@@ -87,18 +74,13 @@ struct ModelDownloadView: View {
             } else if downloadManager.isDownloading {
                 ProgressView("")
             } else {
-                VStack(spacing: 8) {
-                    Text("Total download: \(quality.totalDownloadSizeLabel)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button("Download AI Models") {
-                        ModelQualityLevel.select(selectedQuality, forNewInstall: !hasChosenQuality)
-                        hasChosenQuality = true
-                        Task { await downloadManager.downloadAll() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                Button("Download AI Models") {
+                    ModelQualityLevel.select(selectedQuality, forNewInstall: !hasChosenQuality)
+                    hasChosenQuality = true
+                    Task { await downloadManager.downloadAll() }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
 
             Spacer()

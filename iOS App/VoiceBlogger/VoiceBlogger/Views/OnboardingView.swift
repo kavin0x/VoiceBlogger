@@ -253,150 +253,151 @@ private struct OnboardingReadyPage: View {
     let onComplete: () -> Void
 
     @State private var downloadStarted = false
+    @State private var selectedQuality = ModelQualityLevel.recommended
+    @State private var hasChosenQuality = ModelQualityLevel.current != ModelQualityLevel.recommended
+        || UserDefaults.standard.bool(forKey: "whisperModelReady_v4")
+
+    private var showQualityPicker: Bool {
+        !hasChosenQuality && !downloadStarted && !downloadManager.isDownloading && !downloadManager.allModelsReady
+    }
 
     private var overallProgress: Double {
         (downloadManager.whisperProgress + downloadManager.llmProgress) / 2.0
     }
 
     var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 28) {
+                headerSection
 
+                if showQualityPicker {
+                    ModelQualityPickerView(selection: $selectedQuality)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                statusSection
+
+                actionSection
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 72)
+            .padding(.bottom, 96)
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: 560)
+        .animation(.easeInOut(duration: 0.3), value: showQualityPicker)
+        .animation(.easeInOut(duration: 0.4), value: downloadManager.allModelsReady)
+        .animation(.easeInOut(duration: 0.4), value: downloadManager.downloadError != nil)
+        .animation(.easeInOut(duration: 0.4), value: downloadStarted)
+        .onAppear {
+            selectedQuality = ModelQualityLevel.current
+            hasChosenQuality = UserDefaults.standard.bool(forKey: "whisperModelReady_v4")
+            if downloadManager.isDownloading {
+                downloadStarted = true
+            }
+        }
+        .onChange(of: downloadManager.allModelsReady) { _, ready in
+            guard ready else { return }
+            ModelQualityLevel.lockExistingInstall(to: ModelQualityLevel.current)
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(spacing: 16) {
             Image(systemName: "lock.shield.fill")
-                .font(.system(size: 52))
+                .font(.system(size: 48))
                 .foregroundStyle(.blue)
                 .accessibilityHidden(true)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Text("Private by design")
                     .font(.title2.bold())
                 Text("Every AI model runs on your device. Your voice and data never leave your phone.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 44)
-                Text("This might take a while. Feel free to keep using your phone, download happens in the background!")
-                    .font(.body)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var statusSection: some View {
+        if downloadManager.allModelsReady {
+            Label("Ready to go!", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.green)
+                .frame(maxWidth: .infinity)
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
+        } else if let error = downloadManager.downloadError {
+            VStack(spacing: 10) {
+                Text("Download failed")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.red)
+                Text(error)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 44)
-            }
-
-            Group {
-                if downloadManager.allModelsReady {
-                    Label("Ready to go!", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .transition(.scale(scale: 0.8).combined(with: .opacity))
-                } else if let error = downloadManager.downloadError {
-                    VStack(spacing: 8) {
-                        Text("Download failed")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.red)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-                        Button("Retry") {
-                            downloadStarted = true
-                            Task { await downloadManager.downloadAll() }
-                        }
-                        .foregroundStyle(.blue)
-                        .font(.subheadline)
-                    }
-                    .transition(.opacity)
-                } else if downloadStarted || downloadManager.isDownloading {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Text("Downloading AI models…")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(overallProgress.formatted(.percent.precision(.fractionLength(0))))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        ProgressView(value: overallProgress)
-                            .tint(.blue)
-                    }
-                    .padding(.horizontal, 40)
-                    .transition(.opacity)
-                } else {
-                    // Pre-download: disclose sizes before the user commits
-                    VStack(spacing: 6) {
-                        HStack {
-                            Label("Speech Recognition", systemImage: "waveform")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("~1.5 GB")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack {
-                            Label("Blog Generator", systemImage: "text.bubble.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("~1.0 GB")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        Divider()
-                        HStack {
-                            Text("Total")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("~2.5 GB")
-                                .font(.caption.monospacedDigit().weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(12)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.horizontal, 40)
-                    .transition(.opacity)
+                Button("Retry") {
+                    downloadStarted = true
+                    Task { await downloadManager.downloadAll() }
                 }
+                .font(.subheadline)
             }
-            .animation(.easeInOut(duration: 0.4), value: downloadManager.allModelsReady)
-            .animation(.easeInOut(duration: 0.4), value: downloadManager.downloadError != nil)
-            .animation(.easeInOut(duration: 0.4), value: downloadStarted)
+            .frame(maxWidth: .infinity)
+            .transition(.opacity)
+        } else if downloadStarted || downloadManager.isDownloading {
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Downloading AI models…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(overallProgress.formatted(.percent.precision(.fractionLength(0))))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: overallProgress)
+                    .tint(.blue)
+                Text("Feel free to use your phone — the download continues in the background.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .transition(.opacity)
+        }
+    }
 
-            if downloadManager.allModelsReady {
-                Button("Get Started") {
-                    onComplete()
+    @ViewBuilder
+    private var actionSection: some View {
+        if downloadManager.allModelsReady {
+            Button("Get Started", action: onComplete)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+        } else if !downloadStarted && !downloadManager.isDownloading {
+            VStack(spacing: 10) {
+                Button("Download AI Models") {
+                    ModelQualityLevel.select(selectedQuality, forNewInstall: !hasChosenQuality)
+                    hasChosenQuality = true
+                    downloadStarted = true
+                    Task { await downloadManager.downloadAll() }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-            } else if !downloadStarted && !downloadManager.isDownloading {
-                VStack(spacing: 6) {
-                    Button("Download AI Models (~2.5 GB)") {
-                        downloadStarted = true
-                        Task { await downloadManager.downloadAll() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    Text("Wi-Fi recommended. Download happens once.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            } else {
-                Button("Setting up…") {}
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(true)
-            }
+                .frame(maxWidth: .infinity)
 
-            Spacer()
-        }
-        .frame(maxWidth: 560)
-        .onAppear {
-            // If a download is already in progress when this page appears, reflect that in state
-            if downloadManager.isDownloading {
-                downloadStarted = true
+                Text("Wi-Fi recommended · Download happens once")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
             }
+        } else if downloadManager.downloadError == nil {
+            Button("Setting up…") {}
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+                .disabled(true)
         }
     }
 }

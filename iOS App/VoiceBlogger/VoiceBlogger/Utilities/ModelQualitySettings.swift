@@ -58,15 +58,23 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
         switch self {
         case .high: return "Best accuracy · ~3.2 GB"
         case .medium: return "Recommended · ~2.5 GB"
-        case .low: return "Faster download · ~1.2 GB"
+        case .low: return "Faster download · ~1.7 GB"
+        }
+    }
+
+    var tagline: String {
+        switch self {
+        case .high: return "Best accuracy"
+        case .medium: return "Recommended for most devices"
+        case .low: return "Faster download"
         }
     }
 
     var whisperModelID: String {
         switch self {
-        case .high: return "openai_whisper-large-v3"
+        case .high: return "openai_whisper-large-v3-turbo"
         case .medium: return "openai_whisper-medium"
-        case .low: return "openai_whisper-base"
+        case .low: return "openai_whisper-small"
         }
     }
 
@@ -81,7 +89,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
         switch self {
         case .high: return "~2.0 GB"
         case .medium: return "~1.5 GB"
-        case .low: return "~0.5 GB"
+        case .low: return "~0.7 GB"
         }
     }
 
@@ -96,7 +104,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
         switch self {
         case .high: return "~3.2 GB"
         case .medium: return "~2.5 GB"
-        case .low: return "~1.2 GB"
+        case .low: return "~1.7 GB"
         }
     }
 }
