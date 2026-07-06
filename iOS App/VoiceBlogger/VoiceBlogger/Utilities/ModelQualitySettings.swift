@@ -66,7 +66,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
         switch self {
         case .high: return "Best accuracy"
         case .medium: return "Recommended for most devices"
-        case .low: return "Faster download"
+        case .low: return "Faster download, lowest accuracy"
         }
     }
 

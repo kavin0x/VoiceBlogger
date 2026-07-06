@@ -10,6 +10,7 @@ struct ContentView: View {
     @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     @State private var darwinObserverToken: UnsafeMutableRawPointer?
+    @State private var showReviewPrompt = false
 
     var body: some View {
         Group {
@@ -37,7 +38,11 @@ struct ContentView: View {
             guard complete else { return }
             processPendingIntents()
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { oldPhase, phase in
+            if phase == .active, oldPhase != .active {
+                ReviewPromptManager.recordLaunch()
+                scheduleReviewPromptIfNeeded()
+            }
             guard phase == .active else { return }
             processPendingIntents()
         }
@@ -76,6 +81,20 @@ struct ContentView: View {
             Button("OK") { appState.dismissError() }
         } message: {
             Text(appState.errorMessage ?? "")
+        }
+        .alert("Enjoying VoiceBlogger?", isPresented: $showReviewPrompt) {
+            Button("Rate on App Store") {
+                ReviewPromptManager.requestReview()
+                ReviewPromptManager.deferPrompt()
+            }
+            Button("Not Now", role: .cancel) {
+                ReviewPromptManager.deferPrompt()
+            }
+            Button("Don't Ask Again", role: .destructive) {
+                ReviewPromptManager.dismissPermanently()
+            }
+        } message: {
+            Text("Your feedback helps us improve. Would you mind leaving a quick review on the App Store?")
         }
     }
 
@@ -139,5 +158,18 @@ struct ContentView: View {
         guard let darwinObserverToken else { return }
         IntentStorage.removeDarwinObserver(darwinObserverToken)
         self.darwinObserverToken = nil
+    }
+
+    private func scheduleReviewPromptIfNeeded() {
+        guard onboardingComplete else { return }
+        guard appState.stage == .recording else { return }
+        guard ReviewPromptManager.shouldShowPrompt else { return }
+
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard onboardingComplete, appState.stage == .recording else { return }
+            guard ReviewPromptManager.shouldShowPrompt else { return }
+            showReviewPrompt = true
+        }
     }
 }
