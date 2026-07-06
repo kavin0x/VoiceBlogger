@@ -13,6 +13,7 @@ Examples:
     python Transcribe_and_blog.py recording.m4a --language en --task transcribe
     python Transcribe_and_blog.py recording.m4a --language hi --task translate --model gemma4:e4b
     python Transcribe_and_blog.py recording.m4a --no-instagram
+    python Transcribe_and_blog.py recording.m4a --transcribe-only
 """
 
 import sys
@@ -196,6 +197,10 @@ def parse_args():
         "--no-instagram", action="store_true",
         help="Skip Instagram caption generation.",
     )
+    parser.add_argument(
+        "--transcribe-only", action="store_true",
+        help="Only transcribe and save the raw transcript; skip blog and Instagram generation.",
+    )
     return parser.parse_args()
 
 
@@ -215,10 +220,13 @@ def main():
     blog_path      = BLOG_DIR     / f"{stem}_blog.md"
     instagram_path = INSTA_DIR    / f"{stem}_instagram.md"
 
+    transcribe_only = args.transcribe_only
     skip_instagram = args.no_instagram
-    steps = ["Transcribe", "Save raw", "Polish + save blog"]
-    if not skip_instagram:
-        steps.append("Generate Instagram captions")
+    steps = ["Transcribe", "Save raw"]
+    if not transcribe_only:
+        steps.append("Polish + save blog")
+        if not skip_instagram:
+            steps.append("Generate Instagram captions")
 
     overall = tqdm(
         total=len(steps),
@@ -236,24 +244,26 @@ def main():
     save_raw(raw_text, raw_path)
     overall.update(1)
 
-    overall.set_postfix_str("polishing...")
-    blog_text = polish_with_ollama(raw_text, args.model, args.language, args.task)
-    blog_path.write_text(blog_text, encoding="utf-8")
-    overall.update(1)
-
-    if not skip_instagram:
-        overall.set_postfix_str("generating instagram captions...")
-        instagram_text = generate_instagram_posts(blog_text, args.model)
-        instagram_path.write_text(instagram_text, encoding="utf-8")
+    if not transcribe_only:
+        overall.set_postfix_str("polishing...")
+        blog_text = polish_with_ollama(raw_text, args.model, args.language, args.task)
+        blog_path.write_text(blog_text, encoding="utf-8")
         overall.update(1)
+
+        if not skip_instagram:
+            overall.set_postfix_str("generating instagram captions...")
+            instagram_text = generate_instagram_posts(blog_text, args.model)
+            instagram_path.write_text(instagram_text, encoding="utf-8")
+            overall.update(1)
 
     overall.set_postfix_str("done ✓")
     overall.close()
 
     print(f"\n  ✓ Raw transcript  → {raw_path}  ({raw_path.stat().st_size:,} bytes)")
-    print(f"  ✓ Blog post       → {blog_path}  ({blog_path.stat().st_size:,} bytes)")
-    if not skip_instagram:
-        print(f"  ✓ Instagram posts → {instagram_path}  ({instagram_path.stat().st_size:,} bytes)")
+    if not transcribe_only:
+        print(f"  ✓ Blog post       → {blog_path}  ({blog_path.stat().st_size:,} bytes)")
+        if not skip_instagram:
+            print(f"  ✓ Instagram posts → {instagram_path}  ({instagram_path.stat().st_size:,} bytes)")
     print()
 
 
