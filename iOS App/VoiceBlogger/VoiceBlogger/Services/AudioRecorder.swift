@@ -350,8 +350,10 @@ final class AudioRecorder: NSObject {
                 if !text.isEmpty {
                     self.liveTranscript = TranscriptMergeUtility.merge(existing: self.liveTranscript, newChunk: text)
                     self.isLivePreview = true
-                    let words = self.liveTranscript.split(whereSeparator: \.isWhitespace).count
-                    self.liveActivity.updateRecordingWordCount(words, startedAt: self.recordingStartTime)
+                    if self.isRecording {
+                        let words = self.liveTranscript.split(whereSeparator: \.isWhitespace).count
+                        self.liveActivity.updateRecordingWordCount(words, startedAt: self.recordingStartTime)
+                    }
                 }
                 if isFinal {
                     self.isFinalizingTranscript = false

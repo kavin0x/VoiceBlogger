@@ -9,7 +9,7 @@ struct BlogGenerationPrepView: View {
 
     @State private var didStart = false
     @State private var error: String?
-    @State private var prepStep = "Preparing generator…"
+    @State private var prepStep = String(localized: "Preparing generator…")
 
     init(postID: UUID) {
         self.postID = postID
@@ -66,7 +66,7 @@ struct BlogGenerationPrepView: View {
         }
 
         if TranscriptionSettings.polishTranscriptEnabled {
-            prepStep = "Polishing transcript…"
+            prepStep = String(localized: "Polishing transcript…")
             do {
                 await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
                 let llm = try await downloadManager.loadedLLMService()
@@ -83,10 +83,10 @@ struct BlogGenerationPrepView: View {
         post.title = ""
         try? modelContext.save()
 
-        prepStep = "Unloading speech model…"
+        prepStep = String(localized: "Unloading speech model…")
         await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
 
-        prepStep = "Loading writing assistant…"
+        prepStep = String(localized: "Loading writing assistant…")
         _ = try? await downloadManager.loadedLLMService()
 
         appState.navigateTo(.generatingBlog(post: post))

@@ -1,78 +1,90 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "CFBundleName" : {
-      "comment" : "Bundle name",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "VoiceBlogger"
+  "sourceLanguage": "en",
+  "strings": {
+    "CFBundleName": {
+      "comment": "Bundle name",
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "VoiceBlogger"
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "VoiceBlogger"
+        "es": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "VoiceBlogger"
           }
         },
-        "gu" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "VoiceBlogger"
+        "gu": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "VoiceBlogger"
           }
         },
-        "hi" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "VoiceBlogger"
+        "hi": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "VoiceBlogger"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VoiceBlogger"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VoiceBlogger"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VoiceBlogger"
           }
         }
       }
     },
-    "NSMicrophoneUsageDescription" : {
-      "comment" : "Privacy - Microphone Usage Description",
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone."
+    "NSMicrophoneUsageDescription": {
+      "comment": "Privacy - Microphone Usage Description",
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Voice Blogger uses the microphone to record your speech and turn it into blog posts. Your audio is processed entirely on-device and never leaves your phone."
           }
         },
-        "es" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "Voice Blogger usa el micrófono para grabar tu voz y convertirla en entradas de blog. Tu audio se procesa completamente en el dispositivo y nunca sale de tu teléfono."
+        "es": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "Voice Blogger usa el micrófono para grabar tu voz y convertirla en entradas de blog. Tu audio se procesa completamente en el dispositivo y nunca sale de tu teléfono."
           }
         },
-        "gu" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "Voice Blogger તમારી વાણી રેકોર્ડ કરવા અને તેને બ્લૉગ પોસ્ટ્સમાં ફેરવવા માટે માઇક્રોફોનનો ઉપયોગ કરે છે. તમારો ઑડિઓ સંપૂર્ણ રીતે ડિવાઇસ પર જ પ્રોસેસ થાય છે અને ક્યારેય તમારા ફોનની બહાર જતો નથી."
+        "gu": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "Voice Blogger તમારી વાણી રેકોર્ડ કરવા અને તેને બ્લૉગ પોસ્ટ્સમાં ફેરવવા માટે માઇક્રોફોનનો ઉપયોગ કરે છે. તમારો ઑડિઓ સંપૂર્ણ રીતે ડિવાઇસ પર જ પ્રોસેસ થાય છે અને ક્યારેય તમારા ફોનની બહાર જતો નથી."
           }
         },
-        "hi" : {
-          "stringUnit" : {
-            "state" : "machine_translated",
-            "value" : "Voice Blogger आपकी आवाज़ रिकॉर्ड करने और उसे ब्लॉग पोस्ट में बदलने के लिए माइक्रोफ़ोन का उपयोग करता है। आपका ऑडियो पूरी तरह से डिवाइस पर ही प्रोसेस होता है और आपके फ़ोन से बाहर नहीं जाता।"
+        "hi": {
+          "stringUnit": {
+            "state": "machine_translated",
+            "value": "Voice Blogger आपकी आवाज़ रिकॉर्ड करने और उसे ब्लॉग पोस्ट में बदलने के लिए माइक्रोफ़ोन का उपयोग करता है। आपका ऑडियो पूरी तरह से डिवाइस पर ही प्रोसेस होता है और आपके फ़ोन से बाहर नहीं जाता।"
           }
         },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voice Blogger 利用麦克风录制您的语音，并将其转化为博客文章。您的音频完全在设备本地处理，绝不会离开您的手机。"
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice Blogger 利用麦克风录制您的语音，并将其转化为博客文章。您的音频完全在设备本地处理，绝不会离开您的手机。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice Blogger utilise le microphone pour enregistrer votre voix et la transformer en articles de blog. Votre audio est entièrement traité sur l'appareil et ne quitte jamais votre téléphone."
           }
         }
       }
     }
   },
-  "version" : "1.4"
+  "version": "1.4"
 }

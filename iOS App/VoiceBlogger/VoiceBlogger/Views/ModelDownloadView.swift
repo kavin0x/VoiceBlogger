@@ -34,15 +34,21 @@ struct ModelDownloadView: View {
             VStack(spacing: 20) {
                 DownloadRowView(
                     icon: "waveform",
-                    title: "Speech Recognition",
-                    subtitle: "90+ languages · \(quality.whisperDownloadSizeLabel) · resumable",
+                    title: String(localized: "Speech Recognition"),
+                    subtitle: String(
+                        format: String(localized: "90+ languages · %@ · resumable"),
+                        quality.whisperDownloadSizeLabel
+                    ),
                     progress: downloadManager.whisperProgress,
                     isReady: downloadManager.isWhisperReady
                 )
                 DownloadRowView(
                     icon: "text.bubble.fill",
-                    title: "Writing Assistant",
-                    subtitle: "\(quality.llmDownloadSizeLabel) · resumable",
+                    title: String(localized: "Writing Assistant"),
+                    subtitle: String(
+                        format: String(localized: "%@ · resumable"),
+                        quality.llmDownloadSizeLabel
+                    ),
                     progress: downloadManager.llmProgress,
                     isReady: downloadManager.isLLMReady
                 )

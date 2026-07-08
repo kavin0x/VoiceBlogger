@@ -151,11 +151,11 @@ final class LLMService: Sendable {
                         )
                         var params = GenerateParameters()
                         params.temperature = temperature
-                        params.topP = 0.9
-                        params.repetitionPenalty = 1.15
-                        params.repetitionContextSize = 96
-                        params.frequencyPenalty = 0.05
-                        params.frequencyContextSize = 128
+                        params.topP = 0.92
+                        params.repetitionPenalty = 1.12
+                        params.repetitionContextSize = 128
+                        params.frequencyPenalty = 0.08
+                        params.frequencyContextSize = 160
                         params.maxTokens = maxTokens
 
                         let iterator = try TokenIterator(
@@ -253,6 +253,7 @@ final class LLMService: Sendable {
         transcript: String,
         contentKind: GeneratedContentKind,
         isSpeakerAnnotated: Bool,
+        vocabularyTerms: [String],
         onPhaseChange: (@Sendable (String) -> Void)?
     ) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
@@ -267,13 +268,18 @@ final class LLMService: Sendable {
                     summaries.reserveCapacity(chunks.count)
 
                     if DeviceRAMTier.current == .ample && chunks.count > 1 {
-                        summaries = try await self.mapChunksParallel(chunks)
+                        summaries = try await self.mapChunksParallel(chunks, vocabularyTerms: vocabularyTerms)
                     } else {
                         for (index, chunk) in chunks.enumerated() {
                             try Task.checkCancellation()
                             onPhaseChange?("Analyzing part \(index + 1) of \(chunks.count)…")
-                            let messages = PromptBuilder.chunkSummaryMessages(for: chunk, index: index, of: chunks.count)
-                            let summary = try await self.collectStream(messages: messages, maxTokens: 250)
+                            let messages = PromptBuilder.chunkSummaryMessages(
+                                for: chunk,
+                                index: index,
+                                of: chunks.count,
+                                vocabularyTerms: vocabularyTerms
+                            )
+                            let summary = try await self.collectStream(messages: messages, maxTokens: 350)
                             summaries.append(summary)
                         }
                     }
@@ -281,8 +287,12 @@ final class LLMService: Sendable {
                     try Task.checkCancellation()
                     onPhaseChange?("Writing \(contentKind.displayName.lowercased())...")
 
-                    let synthesisMessages = PromptBuilder.synthesisMessages(from: summaries, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)
-                    for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 1800, clearCacheWhenDone: true) {
+                    let synthesisMessages = PromptBuilder.synthesisMessages(
+                        from: summaries,
+                        contentKind: contentKind,
+                        isSpeakerAnnotated: isSpeakerAnnotated
+                    )
+                    for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 2048, temperature: 0.38, clearCacheWhenDone: true) {
                         try Task.checkCancellation()
                         if case .terminated = continuation.yield(token) { break }
                     }
@@ -297,7 +307,7 @@ final class LLMService: Sendable {
         }
     }
 
-    nonisolated private func mapChunksParallel(_ chunks: [String]) async throws -> [String] {
+    nonisolated private func mapChunksParallel(_ chunks: [String], vocabularyTerms: [String]) async throws -> [String] {
         var summaries = Array(repeating: "", count: chunks.count)
         let width = 2
         var index = 0
@@ -306,8 +316,13 @@ final class LLMService: Sendable {
             try await withThrowingTaskGroup(of: (Int, String).self) { group in
                 for i in index..<end {
                     group.addTask {
-                        let messages = PromptBuilder.chunkSummaryMessages(for: chunks[i], index: i, of: chunks.count)
-                        let summary = try await self.collectStream(messages: messages, maxTokens: 250)
+                        let messages = PromptBuilder.chunkSummaryMessages(
+                            for: chunks[i],
+                            index: i,
+                            of: chunks.count,
+                            vocabularyTerms: vocabularyTerms
+                        )
+                        let summary = try await self.collectStream(messages: messages, maxTokens: 350)
                         return (i, summary)
                     }
                 }
@@ -324,6 +339,7 @@ final class LLMService: Sendable {
         transcript: String,
         contentKind: GeneratedContentKind,
         isSpeakerAnnotated: Bool = false,
+        vocabularyTerms: [String] = [],
         onPhaseChange: (@Sendable (String) -> Void)? = nil
     ) -> AsyncThrowingStream<String, Error> {
         if PromptBuilder.needsChunking(transcript) {
@@ -331,12 +347,19 @@ final class LLMService: Sendable {
                 transcript: transcript,
                 contentKind: contentKind,
                 isSpeakerAnnotated: isSpeakerAnnotated,
+                vocabularyTerms: vocabularyTerms,
                 onPhaseChange: onPhaseChange
             )
         }
         return generateStream(
-            messages: PromptBuilder.contentMessages(transcript: transcript, contentKind: contentKind, isSpeakerAnnotated: isSpeakerAnnotated),
-            maxTokens: 1800,
+            messages: PromptBuilder.contentMessages(
+                transcript: transcript,
+                contentKind: contentKind,
+                isSpeakerAnnotated: isSpeakerAnnotated,
+                vocabularyTerms: vocabularyTerms
+            ),
+            maxTokens: 2048,
+            temperature: 0.38,
             clearCacheWhenDone: true
         )
     }

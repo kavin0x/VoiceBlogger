@@ -131,6 +131,23 @@ struct VoiceBloggerTests {
         #expect(system.contains("Action Items"))
     }
 
+    @Test func promptBuilderKeepsPersonalDictionaryPrivate() {
+        let messages = PromptBuilder.contentMessages(
+            transcript: "I met with Kavitha about the roadmap.",
+            contentKind: .blogPost,
+            vocabularyTerms: ["Kavitha", "VoiceBlogger"]
+        )
+        let system = messages.first?["content"] ?? ""
+        let user = messages.dropFirst().first?["content"] ?? ""
+
+        #expect(system.contains("PERSONAL DICTIONARY (PRIVATE)"))
+        #expect(system.contains("NEVER mention, quote, list, summarize"))
+        #expect(user.contains("Private spelling reference"))
+        #expect(user.contains("Kavitha, VoiceBlogger"))
+        #expect(user.contains("Transcript:"))
+        #expect(!user.hasPrefix("Custom vocabulary"))
+    }
+
     @Test func linkedinPromptIncludesTemplatesAndSinglePostContract() {
         let messages = PromptBuilder.linkedinMessages(blogContent: "We shipped the beta after reducing launch time by 35%.")
         let system = messages.first?["content"] ?? ""

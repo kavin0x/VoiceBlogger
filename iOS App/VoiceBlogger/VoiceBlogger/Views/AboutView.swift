@@ -28,14 +28,14 @@ struct AboutView: View {
                     LabeledContent("Model quality", value: ModelQualityLevel.current.displayName)
                 }
 
-                VocabularySettingsView()
-
-                Section("Beta") {
+                Section("Beta (may not work as expected or decrease quality)") {
                     Toggle("Automatic content type detection", isOn: $automaticContentKindDetectionEnabled)
                     Text("When enabled, transcripts are labeled as blog posts, meeting notes, or notes based on automatic classification.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                VocabularySettingsView()
 
                 Section("Transcription") {
                     Picker("Language", selection: $selectedLanguageCode) {

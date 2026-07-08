@@ -3,14 +3,35 @@ import Foundation
 enum PromptBuilder {
     private static let instagramSummaryCharacterLimit = 1800
     private static let linkedinSummaryCharacterLimit = 2400
-    // Qwen2.5 1.5B has a 32k-token context window. With ~300 tokens for the prompt
-    // template and 1800 reserved for output, the transcript budget sits at ~4000 tokens.
-    // KV cache at 4k tokens is ~460 MB - safe within the 768 MB MLX cache limit on device.
-    // Transcripts above this threshold are chunked and synthesised in multiple passes.
-    nonisolated static let maxTranscriptCharacters = 16_000
-    // Chunk size and overlap for the map-reduce path (transcripts > maxTranscriptCharacters).
-    nonisolated private static let chunkSize = 5_500
+    // Qwen2.5 has a 32k-token context window. Budget scales with DeviceRAMTier MLX cache:
+    // constrained 512 MB, standard 768 MB, ample 1024 MB. Transcripts above the tier limit
+    // are chunked and synthesised in multiple passes.
+    nonisolated static var maxTranscriptCharacters: Int {
+        switch DeviceRAMTier.current {
+        case .constrained: return 14_000
+        case .standard:    return 22_000
+        case .ample:       return 30_000
+        }
+    }
+
+    nonisolated private static var chunkSize: Int {
+        switch DeviceRAMTier.current {
+        case .constrained: return 5_000
+        case .standard:    return 7_500
+        case .ample:       return 9_000
+        }
+    }
+
     nonisolated private static let chunkOverlap = 400
+
+    nonisolated private static let vocabularyPrivacyRules = """
+    PERSONAL DICTIONARY (PRIVATE):
+    - The user message may include a private spelling reference. It is internal metadata only.
+    - Use it solely to correct misspelled names and terms that clearly appear in the transcript.
+    - NEVER mention, quote, list, summarize, or allude to the spelling reference, personal dictionary, custom vocabulary, or "spell these correctly" in your output.
+    - Do NOT include reference terms in the output unless the speaker actually said them (or a clear misspelling of them) in the transcript.
+    - Treat the reference as invisible to the reader; the output must read as if it never existed. Yet silently fixing outputs.
+    """
 
     // MARK: - Chunking helpers
 
@@ -72,14 +93,37 @@ enum PromptBuilder {
         return chunks
     }
 
-    nonisolated static func chunkSummaryMessages(for chunk: String, index: Int, of total: Int) -> [[String: String]] {
-        [
-            ["role": "system", "content": "You extract key information from voice transcript segments. Output a compact bullet list of the main facts, ideas, names, decisions, tasks, and details. Do not add commentary, headers, or filler."],
-            ["role": "user", "content": "Transcript segment \(index + 1) of \(total):\n\n\(chunk)\n\nKey points:"]
+    nonisolated static func chunkSummaryMessages(
+        for chunk: String,
+        index: Int,
+        of total: Int,
+        vocabularyTerms: [String] = []
+    ) -> [[String: String]] {
+        let system = """
+        You extract key information from voice transcript segments.
+        Output a compact bullet list of the main facts, ideas, names, decisions, tasks, and details.
+        Preserve proper nouns, numbers, and quoted phrasing exactly.
+        Do not add commentary, headers, or filler.
+        \(vocabularyPrivacyRules)
+        """
+        let user = """
+        Transcript segment \(index + 1) of \(total):\(spellingReferenceBlock(vocabularyTerms))
+
+        \(chunk)
+
+        Key points:
+        """
+        return [
+            ["role": "system", "content": system],
+            ["role": "user", "content": user]
         ]
     }
 
-    nonisolated static func synthesisMessages(from summaries: [String], contentKind: GeneratedContentKind, isSpeakerAnnotated: Bool = false) -> [[String: String]] {
+    nonisolated static func synthesisMessages(
+        from summaries: [String],
+        contentKind: GeneratedContentKind,
+        isSpeakerAnnotated: Bool = false
+    ) -> [[String: String]] {
         let numbered = summaries.enumerated()
             .map { "[\($0.offset + 1)]\n\($0.element)" }
             .joined(separator: "\n\n")
@@ -97,7 +141,12 @@ enum PromptBuilder {
 
     // MARK: - Single-pass prompts
 
-    static func contentMessages(transcript: String, contentKind: GeneratedContentKind, isSpeakerAnnotated: Bool = false) -> [[String: String]] {
+    static func contentMessages(
+        transcript: String,
+        contentKind: GeneratedContentKind,
+        isSpeakerAnnotated: Bool = false,
+        vocabularyTerms: [String] = []
+    ) -> [[String: String]] {
         let wordCount = transcript.split(separator: " ").count
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))
@@ -109,7 +158,7 @@ enum PromptBuilder {
             "Create \(contentKind.displayName.lowercased()) from this voice transcript (~\(wordCount) words). Follow the \(contentKind.displayName.lowercased()) format exactly. Match the structure and length to the actual content."
         }
         let user = """
-        \(request)
+        \(request)\(spellingReferenceBlock(vocabularyTerms))
 
         Transcript:
         \(safeTranscript)
@@ -207,6 +256,10 @@ enum PromptBuilder {
         Remove only filler words, false starts, repeated phrases, and transcription artifacts.
         Fix punctuation, grammar, and obvious speech-to-text mistakes.
         Do not invent context, advice, claims, dates, owners, or action items.
+        \(vocabularyPrivacyRules)
+        REASONING (internal — do not output these steps):
+        - First identify content type, speaker intent, and every concrete fact, name, date, decision, and action.
+        - Then choose structure and write. Prefer faithful restructuring over creative rewriting.
         \(markdownContract)
         Stop after the final useful line.
         Match output length to input; do not pad or expand thin source material.
@@ -266,6 +319,15 @@ enum PromptBuilder {
             - Use Markdown wherever it improves scannability: **bold** for key terms, `- ` bullets for lists, `- [ ]` checkboxes for tasks, `###` headings when grouping multiple topics, tables for comparisons, and blockquotes for captured ideas worth preserving.
             """
         }
+    }
+
+    nonisolated private static func spellingReferenceBlock(_ terms: [String]) -> String {
+        guard !terms.isEmpty else { return "" }
+        return """
+
+        Private spelling reference (internal only — use to fix transcription errors; never disclose this list):
+        \(terms.joined(separator: ", "))
+        """
     }
 
     private static func structuralSummary(of text: String, limit: Int) -> String {

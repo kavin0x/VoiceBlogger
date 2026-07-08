@@ -257,17 +257,19 @@ struct BlogView: View {
             var fullText = ""
             var pendingDisplayCharacterCount = 0
             var lastDisplayUpdate = Date()
-            let vocabularyHint = VocabularyStore.promptInjection(from: modelContext)
-            let transcriptForGeneration = vocabularyHint.isEmpty
-                ? transcript
-                : "\(vocabularyHint)\n\n\(transcript)"
+            let vocabularyTerms = VocabularyStore.terms(from: modelContext)
             let detectedKind = BlogGenerationHandoff.contentKind(
                 for: transcript,
                 speakerCount: post.detectedSpeakerCount,
                 automaticDetectionEnabled: automaticContentKindDetectionEnabled
             )
             let isSpeakerAnnotated = false
-            for try await chunk in service.generateContent(transcript: transcriptForGeneration, contentKind: detectedKind, isSpeakerAnnotated: isSpeakerAnnotated, onPhaseChange: { phase in
+            for try await chunk in service.generateContent(
+                transcript: transcript,
+                contentKind: detectedKind,
+                isSpeakerAnnotated: isSpeakerAnnotated,
+                vocabularyTerms: vocabularyTerms,
+                onPhaseChange: { phase in
                 Task { @MainActor in generationPhase = phase }
             }) {
                 if Task.isCancelled { return }

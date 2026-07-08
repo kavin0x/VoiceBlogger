@@ -8,11 +8,17 @@ final class LiveActivityCoordinator {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
     private var recordingActivity: Activity<VoiceBloggerActivityAttributes>?
     private var downloadActivity: Activity<VoiceBloggerActivityAttributes>?
+    /// Bumped when recording ends so in-flight `update` tasks cannot revive the activity.
+    private var recordingUpdateGeneration = 0
+    private var isRecordingActivityActive = false
 #endif
 
     func startRecording(startedAt: Date = .now) {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        isRecordingActivityActive = true
+        recordingUpdateGeneration += 1
 
         let state = VoiceBloggerActivityAttributes.ContentState(
             title: "Recording",
@@ -28,7 +34,7 @@ final class LiveActivityCoordinator {
 
     func updateRecordingWordCount(_ count: Int, startedAt: Date?) {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard isRecordingActivityActive, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let detail = count > 0 ? "\(count) words transcribed" : "Voice Blogger"
         let state = VoiceBloggerActivityAttributes.ContentState(
             title: "Recording",
@@ -44,6 +50,9 @@ final class LiveActivityCoordinator {
 
     func endRecording() {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
+        isRecordingActivityActive = false
+        recordingUpdateGeneration += 1
+
         let state = VoiceBloggerActivityAttributes.ContentState(
             title: "Recording Saved",
             detail: "Ready to transcribe",
@@ -96,8 +105,10 @@ final class LiveActivityCoordinator {
         state: VoiceBloggerActivityAttributes.ContentState,
         relevanceScore: Double
     ) {
+        if kind == .recording, !isRecordingActivityActive { return }
+
         if let activity = activity(for: kind) {
-            update(activity, state: state, relevanceScore: relevanceScore)
+            update(activity, state: state, relevanceScore: relevanceScore, generation: recordingUpdateGeneration)
             return
         }
 
@@ -119,7 +130,8 @@ final class LiveActivityCoordinator {
     private func update(
         _ activity: Activity<VoiceBloggerActivityAttributes>,
         state: VoiceBloggerActivityAttributes.ContentState,
-        relevanceScore: Double
+        relevanceScore: Double,
+        generation: Int
     ) {
         let content = ActivityContent(
             state: state,
@@ -128,6 +140,9 @@ final class LiveActivityCoordinator {
         )
 
         Task {
+            if activity.attributes.kind == .recording {
+                guard generation == recordingUpdateGeneration else { return }
+            }
             await activity.update(content)
         }
     }

@@ -360,12 +360,13 @@ private struct OnboardingReadyPage: View {
                 ProgressView(value: overallProgress)
                     .tint(.blue)
                 Text("Feel free to use your phone — the download continues in the background.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.title3) // Make it bigger than caption
+                    .foregroundStyle(.white) // Actually white text
                     .multilineTextAlignment(.center)
             }
             .transition(.opacity)
         }
+   
     }
 
     @ViewBuilder

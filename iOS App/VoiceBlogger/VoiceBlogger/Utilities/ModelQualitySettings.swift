@@ -48,25 +48,25 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .high: return "High Quality"
-        case .medium: return "Balanced"
-        case .low: return "Compact"
+        case .high: return String(localized: "High Quality")
+        case .medium: return String(localized: "Balanced")
+        case .low: return String(localized: "Compact")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .high: return "Best accuracy · ~3.2 GB"
-        case .medium: return "Recommended · ~2.5 GB"
-        case .low: return "Faster download · ~1.7 GB"
+        case .high: return String(localized: "Best accuracy · ~3.2 GB")
+        case .medium: return String(localized: "Recommended · ~2.5 GB")
+        case .low: return String(localized: "Faster download · ~1.7 GB")
         }
     }
 
     var tagline: String {
         switch self {
-        case .high: return "Best accuracy"
-        case .medium: return "Recommended for most devices"
-        case .low: return "Faster download, lowest accuracy"
+        case .high: return String(localized: "Best accuracy")
+        case .medium: return String(localized: "Recommended for most devices")
+        case .low: return String(localized: "Faster download, lowest accuracy")
         }
     }
 
@@ -87,24 +87,24 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var whisperDownloadSizeLabel: String {
         switch self {
-        case .high: return "~2.0 GB"
-        case .medium: return "~1.5 GB"
-        case .low: return "~0.7 GB"
+        case .high: return String(localized: "~2.0 GB")
+        case .medium: return String(localized: "~1.5 GB")
+        case .low: return String(localized: "~0.7 GB")
         }
     }
 
     var llmDownloadSizeLabel: String {
         switch self {
-        case .high: return "~1.8 GB"
-        case .medium, .low: return "~1.0 GB"
+        case .high: return String(localized: "~1.8 GB")
+        case .medium, .low: return String(localized: "~1.0 GB")
         }
     }
 
     var totalDownloadSizeLabel: String {
         switch self {
-        case .high: return "~3.2 GB"
-        case .medium: return "~2.5 GB"
-        case .low: return "~1.7 GB"
+        case .high: return String(localized: "~3.2 GB")
+        case .medium: return String(localized: "~2.5 GB")
+        case .low: return String(localized: "~1.7 GB")
         }
     }
 }
