@@ -56,7 +56,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var subtitle: String {
         switch self {
-        case .high: return String(localized: "Best accuracy · ~3.2 GB")
+        case .high: return String(localized: "Best accuracy · ~2.4 GB")
         case .medium: return String(localized: "Recommended · ~2.5 GB")
         case .low: return String(localized: "Faster download · ~1.7 GB")
         }
@@ -72,7 +72,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var whisperModelID: String {
         switch self {
-        case .high: return "openai_whisper-large-v3-turbo"
+        case .high: return "openai_whisper-large-v3-v20240930_626MB"
         case .medium: return "openai_whisper-medium"
         case .low: return "openai_whisper-small"
         }
@@ -87,7 +87,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var whisperDownloadSizeLabel: String {
         switch self {
-        case .high: return String(localized: "~2.0 GB")
+        case .high: return String(localized: "~0.6 GB")
         case .medium: return String(localized: "~1.5 GB")
         case .low: return String(localized: "~0.7 GB")
         }
@@ -102,7 +102,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var totalDownloadSizeLabel: String {
         switch self {
-        case .high: return String(localized: "~3.2 GB")
+        case .high: return String(localized: "~2.4 GB")
         case .medium: return String(localized: "~2.5 GB")
         case .low: return String(localized: "~1.7 GB")
         }
