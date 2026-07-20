@@ -5,6 +5,7 @@ import Tokenizers
 
 // Adapts HuggingFace.HubClient to the MLXLMCommon.Downloader protocol.
 // Equivalent to what the #hubDownloader() macro expands to.
+// sunday july 19 2026 (i have to add some change in order to test the cicd pipeline >:( )
 struct HubDownloader: MLXLMCommon.Downloader {
     private let upstream: HuggingFace.HubClient
 
