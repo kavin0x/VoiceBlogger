@@ -65,16 +65,16 @@ final class LiveActivityCoordinator {
 #endif
     }
 
-    func startDownload(progress: Double, detail: String) {
-        updateDownload(progress: progress, detail: detail)
+    func startDownload(progress: Double, detail: String, title: String = "Downloading Models") {
+        updateDownload(progress: progress, detail: detail, title: title)
     }
 
-    func updateDownload(progress: Double, detail: String) {
+    func updateDownload(progress: Double, detail: String, title: String = "Downloading Models") {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let state = VoiceBloggerActivityAttributes.ContentState(
-            title: "Downloading Models",
+            title: title,
             detail: detail,
             progress: min(max(progress, 0), 1),
             startedAt: nil,
@@ -88,7 +88,7 @@ final class LiveActivityCoordinator {
     func endDownload(isComplete: Bool) {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         let state = VoiceBloggerActivityAttributes.ContentState(
-            title: isComplete ? "Models Ready" : "Download Paused",
+            title: isComplete ? "Update Complete" : "Download Paused",
             detail: isComplete ? "Voice Blogger works offline" : "Open the app to resume",
             progress: isComplete ? 1 : nil,
             startedAt: nil,

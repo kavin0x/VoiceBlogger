@@ -72,7 +72,7 @@ enum ModelQualityLevel: String, CaseIterable, Codable, Sendable {
 
     var whisperModelID: String {
         switch self {
-        case .high: return "openai_whisper-large-v3-v20240930_626MB"
+        case .high: return "openai_whisper-large-v3-v20240930_turbo_632MB"
         case .medium: return "openai_whisper-medium"
         case .low: return "openai_whisper-small"
         }

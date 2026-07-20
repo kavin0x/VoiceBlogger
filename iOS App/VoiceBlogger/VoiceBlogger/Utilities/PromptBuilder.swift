@@ -35,15 +35,20 @@ enum PromptBuilder {
 
     nonisolated private static let outputOnlyContract = """
     OUTPUT CONTRACT (mandatory):
-    - Your entire reply IS the finished document. Start with the first content line (title, heading, bullet, or paragraph).
+    - Your entire reply IS the finished document.
     - Output ONLY the final Markdown (or plain post text for social captions). Nothing else.
     - NEVER output reasoning, analysis, planning, self-talk, chain-of-thought, scratch work, or meta commentary.
     - NEVER use tags or labels such as <think>, </think>, <thinking>, REASONING:, Analysis:, Thoughts:, or "Let me…".
     - NEVER write preambles or wrappers: no "Here is…", "Sure,", "Okay,", "Final answer:", or "Output:".
     - Do not wrap the whole reply in a markdown code fence.
+    - NEVER use the `>` character anywhere in the output (no Markdown blockquotes, no quote prefixes).
     - Stop immediately after the last useful content line.
-    - Reduce the usage of the ">" character in the output.
-    - Always start the output with the title of the content. The title should be a single line, and should be the first line of the output.
+    """
+
+    nonisolated private static let markdownTitleContract = """
+    TITLE CONTRACT (mandatory for Markdown documents):
+    - Line 1 MUST be a Markdown H1 title: exactly `# ` followed by a short title.
+    - Never start with a paragraph, bullet, or `##`.
     """
 
     nonisolated private static let faithfulnessRules = """
@@ -269,16 +274,18 @@ enum PromptBuilder {
         MARKDOWN OUTPUT CONTRACT:
         - Return valid Markdown as the final answer. Do not wrap the whole response in a code fence.
         - Prefer Markdown structure over long plain-text paragraphs whenever it improves scanning.
-        - Use blank lines between Markdown blocks so the renderer can parse headings, lists, quotes, tables, and code blocks cleanly.
-        - Use `#`, `##`, and `###` headings for clear hierarchy; use no more than one `#` title.
+        - Use blank lines between Markdown blocks so the renderer can parse headings, lists, tables, and code blocks cleanly.
+        - Always begin with exactly one `#` title on line 1, then use `##` / `###` for section hierarchy when needed.
         - Use **bold** for important names, decisions, claims, and takeaways; use *italics* only for light emphasis.
-        - Use `- ` bullets for unordered ideas, `1. ` lists for sequences, `- [ ]` checkboxes for tasks, `>` blockquotes for notable spoken lines or callouts, tables for comparisons, and fenced code blocks for multi-line technical content.
+        - Use `- ` bullets for unordered ideas, `1. ` lists for sequences, `- [ ]` checkboxes for tasks, tables for comparisons, and fenced code blocks for multi-line technical content.
+        - NEVER use Markdown blockquotes or the `>` character. For notable spoken lines, use **bold** or a short italic sentence instead.
         - Medium and long outputs should include multiple Markdown features, not just paragraphs with a title.
-        - Do not escape Markdown punctuation such as `#`, `*`, `-`, `>`, or backticks.
+        - Do not escape Markdown punctuation such as `#`, `*`, `-`, or backticks.
         """
 
         let baseRules = """
         \(outputOnlyContract)
+        \(markdownTitleContract)
         \(faithfulnessRules)
         \(vocabularyPrivacyRules)
         \(markdownContract)
@@ -296,11 +303,12 @@ enum PromptBuilder {
             - Personal notes: use for reminders, task lists, brainstorms, drafts, rough captures, or short private notes.
 
             BLOG STRUCTURE:
-            - Under 100 input words: write 1-3 short paragraphs, usually with no title.
-            - 100-400 input words: write clean prose with minimal headings only if topics clearly shift.
-            - Over 400 input words: use one title and section headings if helpful.
+            - Always start with `# Title` on line 1, even for short transcripts.
+            - Under 100 input words: `# Title` plus 1-3 short paragraphs.
+            - 100-400 input words: `# Title` plus clean prose; add `##` headings only if topics clearly shift.
+            - Over 400 input words: `# Title` plus section headings when helpful.
             - Keep the speaker's voice and preserve the transcript's natural intent instead of forcing every input into an article.
-            - Make the post Markdown-rich when there is enough material: title, section headings, bolded takeaways, bullets or numbered lists, blockquotes for memorable lines, tables for comparisons, and `code` spans or fenced code blocks for technical content.
+            - Make the post Markdown-rich when there is enough material: `#` title, section headings, bolded takeaways, bullets or numbered lists, tables for comparisons, and `code` spans or fenced code blocks for technical content. Never use `>`.
             """
         case .meetingNotes:
             let speakerGuidance = isSpeakerAnnotated
@@ -317,11 +325,11 @@ enum PromptBuilder {
             \(baseRules)\(speakerGuidance)
 
             MEETING NOTES STRUCTURE:
-            - Start with a concise title if the meeting topic is clear.
+            - Always start with `# Title` on line 1 (derive a concise topic from the transcript).
             - Include sections only when supported by the transcript: Summary, Decisions, Action Items, Open Questions, Key Discussion Points.
             - Put action items in a `- [ ]` checklist. Include owner and deadline only when spoken; otherwise omit them.
             - Keep decisions separate from ideas or unresolved discussion.
-            - Use Markdown throughout: `##` for each section heading, **bold** for decisions and owner names, `- [ ]` for action items, `- ` bullets for discussion points, tables for status/owner/deadline summaries when useful, and blockquotes for important verbatim remarks.
+            - Use Markdown throughout: `##` for each section heading, **bold** for decisions and owner names, `- [ ]` for action items, `- ` bullets for discussion points, and tables for status/owner/deadline summaries when useful. Never use `>` or blockquotes.
             - Do not add narrative polish, hooks, introductions, or conclusions.
             """
         case .notes:
@@ -330,12 +338,11 @@ enum PromptBuilder {
             \(baseRules)
 
             NOTES STRUCTURE:
-            - Keep short notes short.
+            - Always start with `# Title` on line 1, then keep the rest short.
             - Use bullets or a compact checklist when the transcript is a list, reminder, brainstorm, or capture note.
             - Group related ideas under small headings only when there are multiple topics.
             - Preserve rough note intent instead of turning it into an article, essay, or social post.
-            - Do not add a title unless it makes the note easier to scan.
-            - Use Markdown wherever it improves scannability: **bold** for key terms, `- ` bullets for lists, `- [ ]` checkboxes for tasks, `###` headings when grouping multiple topics, tables for comparisons, and blockquotes for captured ideas worth preserving.
+            - Use Markdown wherever it improves scannability: **bold** for key terms, `- ` bullets for lists, `- [ ]` checkboxes for tasks, `###` headings when grouping multiple topics, and tables for comparisons. Never use `>` or blockquotes.
             """
         }
     }

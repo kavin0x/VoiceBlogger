@@ -85,7 +85,7 @@ final class TranscriptionService: @unchecked Sendable {
             options: [.skipsHiddenFiles]
         ) else { return nil }
 
-        for entry in entries {
+        for entry in entries where entry.lastPathComponent != ModelIDs.whisper {
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             if isDir && directoryContainsFiles(entry) { return entry }
         }
@@ -126,7 +126,13 @@ final class TranscriptionService: @unchecked Sendable {
         try validateAudioFile(at: audioURL)
 
         let suppressTokens = Self.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let options = Self.decodingOptions(for: mode, suppressTokens: suppressTokens, livePreview: false)
+        let promptTokens = Self.musicAwarePromptTokens(for: whisperKit.tokenizer)
+        let options = Self.decodingOptions(
+            for: mode,
+            suppressTokens: suppressTokens,
+            promptTokens: promptTokens,
+            livePreview: false
+        )
 
         let previousStateCallback = whisperKit.transcriptionStateCallback
         whisperKit.transcriptionStateCallback = { state in
@@ -202,6 +208,7 @@ final class TranscriptionService: @unchecked Sendable {
     nonisolated static func decodingOptions(
         for mode: TranscriptionMode,
         suppressTokens: [Int],
+        promptTokens: [Int]? = nil,
         livePreview: Bool
     ) -> DecodingOptions {
         switch mode {
@@ -214,11 +221,14 @@ final class TranscriptionService: @unchecked Sendable {
                 temperatureFallbackCount: 5,
                 usePrefillPrompt: language != nil,
                 detectLanguage: language == nil,
+                withoutTimestamps: true,
+                windowClipTime: 1.0,
+                promptTokens: promptTokens,
                 suppressBlank: livePreview,
                 suppressTokens: suppressTokens,
                 compressionRatioThreshold: 2.4,
                 logProbThreshold: -1.0,
-                noSpeechThreshold: 0.6,
+                noSpeechThreshold: 0.45,
                 chunkingStrategy: ChunkingStrategy.none
             )
         case .translate:
@@ -229,11 +239,14 @@ final class TranscriptionService: @unchecked Sendable {
                 temperatureFallbackCount: 5,
                 usePrefillPrompt: true,
                 skipSpecialTokens: true,
+                withoutTimestamps: true,
+                windowClipTime: 1.0,
+                promptTokens: promptTokens,
                 suppressBlank: livePreview,
                 suppressTokens: suppressTokens,
                 compressionRatioThreshold: 2.4,
                 logProbThreshold: -1.0,
-                noSpeechThreshold: 0.6,
+                noSpeechThreshold: 0.45,
                 chunkingStrategy: ChunkingStrategy.none
             )
         }
@@ -242,9 +255,24 @@ final class TranscriptionService: @unchecked Sendable {
     /// Live-chunk transcription uses the same quality settings as the full-file pass.
     nonisolated static func liveChunkDecodingOptions(
         suppressTokens: [Int],
+        promptTokens: [Int]? = nil,
         mode: TranscriptionMode = TranscriptionSettings.transcriptionMode
     ) -> DecodingOptions {
-        decodingOptions(for: mode, suppressTokens: suppressTokens, livePreview: true)
+        decodingOptions(for: mode, suppressTokens: suppressTokens, promptTokens: promptTokens, livePreview: true)
+    }
+
+    /// Condition the decoder so spoken words and lyrics are kept, while instrumental
+    /// background music is less likely to be hallucinated into fake speech.
+    nonisolated static func musicAwarePromptTokens(for tokenizer: (any WhisperTokenizer)?) -> [Int]? {
+        guard let tokenizer else { return nil }
+        let prompt = """
+        Transcribe spoken words and sung lyrics accurately. \
+        Ignore instrumental background music. \
+        Do not invent lyrics or speech from music alone.
+        """
+        let encoded = tokenizer.encode(text: prompt)
+        let filtered = encoded.filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+        return filtered.isEmpty ? nil : filtered
     }
 
     private static let stallTimeoutSeconds: TimeInterval = 120

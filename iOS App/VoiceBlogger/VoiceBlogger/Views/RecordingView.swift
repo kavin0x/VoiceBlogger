@@ -92,27 +92,6 @@ struct RecordingView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                // Live transcript display during recording
-                if recorder.isRecording && !recorder.liveTranscript.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Preview")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 24)
-                        ScrollView {
-                            Text(recorder.liveTranscript)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding()
-                        }
-                        .frame(maxHeight: 200)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal, 24)
-                    }
-                    .transition(.opacity)
-                }
-
                 if !recorder.isRecording {
                     Button {
                         showFilePicker = true
@@ -170,16 +149,22 @@ struct RecordingView: View {
                 return
             }
             do {
-                try await downloadManager.ensureWhisperWarm()
+                // Start capturing audio immediately; Whisper can finish loading in parallel.
                 try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
                 HapticFeedback.recordToggle()
-                // Attach late if warm completes after recording started
-                if downloadManager.whisperKit != nil {
-                    recorder.attachWhisperKit(downloadManager.whisperKit)
-                }
-                // Permission denied during the request (first tap after denial)
                 if recorder.permissionDenied {
                     showPermissionAlert = true
+                    return
+                }
+                if downloadManager.whisperKit == nil {
+                    Task {
+                        await downloadManager.warmWhisper()
+                        if recorder.isRecording {
+                            recorder.attachWhisperKit(downloadManager.whisperKit)
+                        }
+                    }
+                } else {
+                    recorder.attachWhisperKit(downloadManager.whisperKit)
                 }
             } catch {
                 appState.showError("Recording failed: \(error.localizedDescription)")

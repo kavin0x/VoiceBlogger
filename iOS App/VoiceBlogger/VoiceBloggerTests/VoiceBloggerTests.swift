@@ -122,6 +122,10 @@ struct VoiceBloggerTests {
         #expect(!system.contains("REASONING (internal"))
         #expect(system.contains("Medium and long outputs should include multiple Markdown features"))
         #expect(system.contains("Make the post Markdown-rich"))
+        #expect(system.contains("Always start with `# Title` on line 1"))
+        #expect(system.contains("NEVER use the `>` character"))
+        #expect(system.contains("TITLE CONTRACT (mandatory for Markdown documents)"))
+        #expect(!system.contains("`>` blockquotes for notable spoken lines"))
         #expect(user.contains("Use common sense to decide whether it should read as a blog post, meeting notes, or personal notes"))
         #expect(user.contains("Reply with ONLY the finished document"))
     }

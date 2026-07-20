@@ -30,6 +30,7 @@ struct ContentView: View {
             configureIntentFulfillment()
             installDarwinObserverIfNeeded()
             processPendingIntents()
+            downloadManager.evaluatePendingModelUpdates()
         }
         .onDisappear {
             removeDarwinObserverIfNeeded()
@@ -37,6 +38,7 @@ struct ContentView: View {
         .onChange(of: onboardingComplete) { _, complete in
             guard complete else { return }
             processPendingIntents()
+            downloadManager.evaluatePendingModelUpdates()
         }
         .onChange(of: scenePhase) { oldPhase, phase in
             if phase == .active, oldPhase != .active {
@@ -96,6 +98,40 @@ struct ContentView: View {
         } message: {
             Text("Your feedback helps us improve. Would you mind leaving a quick review on the App Store?")
         }
+        .alert(
+            downloadManager.pendingModelUpdate?.alertTitle ?? "New Model Available",
+            isPresented: Binding(
+                get: { downloadManager.pendingModelUpdate != nil && onboardingComplete },
+                set: { presented in
+                    guard !presented, downloadManager.pendingModelUpdate != nil else { return }
+                    downloadManager.declinePendingModelUpdate()
+                }
+            )
+        ) {
+            Button("Download") {
+                downloadManager.acceptPendingModelUpdate()
+            }
+            Button("Not Now", role: .cancel) {
+                downloadManager.declinePendingModelUpdate()
+            }
+        } message: {
+            Text(downloadManager.pendingModelUpdate?.alertMessage ?? "")
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if onboardingComplete,
+               downloadManager.isDownloading,
+               let domain = downloadManager.activeUpdateDomain {
+                ModelUpdateProgressBanner(
+                    domain: domain,
+                    progress: downloadManager.updateBannerProgress,
+                    detail: downloadManager.updateBannerDetail,
+                    error: downloadManager.downloadError
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: downloadManager.isDownloading)
+        .animation(.easeInOut(duration: 0.25), value: downloadManager.activeUpdateDomain)
     }
 
     @ViewBuilder

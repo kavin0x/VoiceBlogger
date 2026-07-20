@@ -350,10 +350,8 @@ final class AudioRecorder: NSObject {
                 if !text.isEmpty {
                     self.liveTranscript = TranscriptMergeUtility.merge(existing: self.liveTranscript, newChunk: text)
                     self.isLivePreview = true
-                    if self.isRecording {
-                        let words = self.liveTranscript.split(whereSeparator: \.isWhitespace).count
-                        self.liveActivity.updateRecordingWordCount(words, startedAt: self.recordingStartTime)
-                    }
+                    // Keep live transcription running for post-stop handoff, but do not
+                    // surface partial text in the Live Activity while recording.
                 }
                 if isFinal {
                     self.isFinalizingTranscript = false
@@ -364,7 +362,11 @@ final class AudioRecorder: NSObject {
 
     nonisolated private static func transcribeChunk(_ samples: [Float], whisperKit: WhisperKit) async -> String {
         let suppressTokens = TranscriptionService.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let options = TranscriptionService.liveChunkDecodingOptions(suppressTokens: suppressTokens)
+        let promptTokens = TranscriptionService.musicAwarePromptTokens(for: whisperKit.tokenizer)
+        let options = TranscriptionService.liveChunkDecodingOptions(
+            suppressTokens: suppressTokens,
+            promptTokens: promptTokens
+        )
         do {
             let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
             let rawText = results.map(\.text).joined(separator: " ")

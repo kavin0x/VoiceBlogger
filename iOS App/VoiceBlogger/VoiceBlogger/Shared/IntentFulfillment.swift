@@ -74,8 +74,18 @@ final class IntentFulfillment {
         guard !recorder.isRecording else { return }
 
         do {
-            try await downloadManager.ensureWhisperWarm()
+            // Start capturing audio immediately; Whisper can finish loading in parallel.
             try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
+            if downloadManager.whisperKit == nil {
+                Task {
+                    await downloadManager.warmWhisper()
+                    if recorder.isRecording {
+                        recorder.attachWhisperKit(downloadManager.whisperKit)
+                    }
+                }
+            } else {
+                recorder.attachWhisperKit(downloadManager.whisperKit)
+            }
         } catch {
             appState.showError("Recording failed: \(error.localizedDescription)")
             if !downloadManager.isWhisperReady {

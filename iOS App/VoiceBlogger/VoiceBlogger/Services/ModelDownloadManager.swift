@@ -12,6 +12,40 @@ private let kLLMReadyKey = "llmModelReady_v4"
 private let kModelDownloadStartedKey = "modelDownloadStarted_v1"
 private let kWhisperFingerprintKey = "whisperModelFingerprint_v1"
 private let kLLMFingerprintKey = "llmModelFingerprint_v1"
+private let kInstalledWhisperModelIDKey = "installedWhisperModelID_v1"
+private let kInstalledLLMModelIDKey = "installedLLMModelID_v1"
+private let kDeclinedWhisperUpdateIDKey = "declinedWhisperModelUpdateID_v1"
+private let kDeclinedLLMUpdateIDKey = "declinedLLMModelUpdateID_v1"
+
+enum ModelUpdateDomain: String, Equatable, Sendable {
+    case speechRecognition
+    case writingAssistant
+
+    var displayName: String {
+        switch self {
+        case .speechRecognition: return String(localized: "Speech Recognition")
+        case .writingAssistant: return String(localized: "Writing Assistant")
+        }
+    }
+}
+
+struct PendingModelUpdate: Equatable, Identifiable {
+    let domain: ModelUpdateDomain
+    let installedID: String
+    let availableID: String
+
+    var id: String { domain.rawValue }
+
+    var alertTitle: String {
+        String(localized: "New \(domain.displayName) Model")
+    }
+
+    var alertMessage: String {
+        String(
+            localized: "A newer \(domain.displayName.lowercased()) model is available. Would you like to download it? Your current model keeps working until the update finishes."
+        )
+    }
+}
 
 @MainActor
 @Observable
@@ -26,6 +60,10 @@ final class ModelDownloadManager {
     var isLLMReady: Bool
     var downloadError: String?
     var isDownloading = false
+    /// Optional single-domain model upgrade offered after an app update changes a model ID.
+    var pendingModelUpdate: PendingModelUpdate?
+    /// Non-nil while a domain-scoped catalog update is downloading (drives banner + Live Activity).
+    var activeUpdateDomain: ModelUpdateDomain?
 
     // Retained after download so TranscriptionService can reuse it without reloading from disk.
     @ObservationIgnored var whisperKit: WhisperKit?
@@ -87,6 +125,9 @@ final class ModelDownloadManager {
                 isWhisperReady = true
                 UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
             }
+            if UserDefaults.standard.string(forKey: kInstalledWhisperModelIDKey) == nil {
+                UserDefaults.standard.set(whisperDir.lastPathComponent, forKey: kInstalledWhisperModelIDKey)
+            }
             whisperProgress = 1.0
         } else if whisperDir != nil {
             // Partial cache without a prior completion — resume in place; never delete.
@@ -122,6 +163,9 @@ final class ModelDownloadManager {
                 isLLMReady = true
                 UserDefaults.standard.set(true, forKey: kLLMReadyKey)
             }
+            if UserDefaults.standard.string(forKey: kInstalledLLMModelIDKey) == nil {
+                UserDefaults.standard.set(ModelIDs.llm, forKey: kInstalledLLMModelIDKey)
+            }
             llmProgress = 1.0
         } else if llmDir != nil {
             isLLMReady = false
@@ -140,6 +184,143 @@ final class ModelDownloadManager {
             UserDefaults.standard.removeObject(forKey: kModelDownloadStartedKey)
             validationCacheValid = true
         }
+
+        evaluatePendingModelUpdates()
+    }
+
+    /// Detects when the app's configured model ID changed for a single domain while an older
+    /// installed model still works. Offers an optional domain-scoped download — never both.
+    func evaluatePendingModelUpdates() {
+        guard !isDownloading, pendingModelUpdate == nil else { return }
+
+        if isWhisperReady,
+           let installed = installedWhisperModelID(),
+           installed != ModelIDs.whisper,
+           UserDefaults.standard.string(forKey: kDeclinedWhisperUpdateIDKey) != ModelIDs.whisper {
+            pendingModelUpdate = PendingModelUpdate(
+                domain: .speechRecognition,
+                installedID: installed,
+                availableID: ModelIDs.whisper
+            )
+            return
+        }
+
+        if isLLMReady,
+           let installed = UserDefaults.standard.string(forKey: kInstalledLLMModelIDKey),
+           installed != ModelIDs.llm,
+           UserDefaults.standard.string(forKey: kDeclinedLLMUpdateIDKey) != ModelIDs.llm {
+            pendingModelUpdate = PendingModelUpdate(
+                domain: .writingAssistant,
+                installedID: installed,
+                availableID: ModelIDs.llm
+            )
+        }
+    }
+
+    func acceptPendingModelUpdate() {
+        guard let update = pendingModelUpdate else { return }
+        pendingModelUpdate = nil
+        activeUpdateDomain = update.domain
+        Task { await downloadDomainUpdate(update.domain) }
+    }
+
+    func declinePendingModelUpdate() {
+        guard let update = pendingModelUpdate else { return }
+        switch update.domain {
+        case .speechRecognition:
+            UserDefaults.standard.set(update.availableID, forKey: kDeclinedWhisperUpdateIDKey)
+        case .writingAssistant:
+            UserDefaults.standard.set(update.availableID, forKey: kDeclinedLLMUpdateIDKey)
+        }
+        pendingModelUpdate = nil
+        evaluatePendingModelUpdates()
+    }
+
+    /// Downloads only the requested domain's new model, leaving the other domain untouched.
+    func downloadDomainUpdate(_ domain: ModelUpdateDomain) async {
+        pendingModelUpdate = nil
+        activeUpdateDomain = domain
+        UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+
+        if let downloadTask {
+            await downloadTask.value
+            return
+        }
+
+        let runID = UUID()
+        downloadRunID = runID
+        let task = Task(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            await self.performDomainUpdate(domain, runID: runID)
+        }
+        downloadTask = task
+        isDownloading = true
+        downloadError = nil
+        beginBackgroundContinuation()
+        liveActivityCoordinator.startDownload(
+            progress: overallDownloadProgress,
+            detail: currentDownloadDetail,
+            title: downloadLiveActivityTitle
+        )
+        await task.value
+    }
+
+    private func performDomainUpdate(_ domain: ModelUpdateDomain, runID: UUID) async {
+        defer {
+            if downloadRunID == runID {
+                let succeeded = downloadError == nil
+                isDownloading = false
+                downloadTask = nil
+                activeUpdateDomain = nil
+                endBackgroundContinuation()
+                liveActivityCoordinator.endDownload(isComplete: succeeded)
+                if allModelsReady {
+                    UserDefaults.standard.removeObject(forKey: kModelDownloadStartedKey)
+                }
+                evaluatePendingModelUpdates()
+            }
+        }
+
+        guard downloadRunID == runID, !Task.isCancelled else { return }
+        downloadError = nil
+        activeUpdateDomain = domain
+
+        switch domain {
+        case .speechRecognition:
+            // Keep the old Speech model usable for recording while the new one downloads.
+            whisperWarmTask?.cancel()
+            whisperWarmTask = nil
+            if let kit = whisperKit {
+                whisperKit = nil
+                await kit.unloadModels()
+            }
+            whisperProgress = 0
+            await downloadWhisper(runID: runID, forceNewCatalogID: true)
+            if downloadError == nil, isWhisperReady {
+                removeStaleWhisperModelDirectories(keeping: ModelIDs.whisper)
+                UserDefaults.standard.set(ModelIDs.whisper, forKey: kInstalledWhisperModelIDKey)
+                UserDefaults.standard.removeObject(forKey: kDeclinedWhisperUpdateIDKey)
+                await warmWhisper()
+            }
+        case .writingAssistant:
+            await prepareForLLMGenerationBarrier(releaseLLM: true)
+            llmProgress = 0
+            isLLMReady = false
+            UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
+            await downloadLLM(prefetchedDirectory: nil, runID: runID)
+            if downloadError == nil, isLLMReady {
+                UserDefaults.standard.set(ModelIDs.llm, forKey: kInstalledLLMModelIDKey)
+                UserDefaults.standard.removeObject(forKey: kDeclinedLLMUpdateIDKey)
+            }
+        }
+    }
+
+    private func installedWhisperModelID() -> String? {
+        if let stored = UserDefaults.standard.string(forKey: kInstalledWhisperModelIDKey), !stored.isEmpty {
+            return stored
+        }
+        return Self.localWhisperModelDirectory()?.lastPathComponent
     }
 
     private enum LegacyReadyModel {
@@ -171,30 +352,60 @@ final class ModelDownloadManager {
     }
 
     // Returns the local WhisperKit model directory if it exists and contains at least one file.
-    // Checks the canonical path first, then scans the parent directory for any valid model
-    // folder — this catches cases where the folder name differs slightly from ModelIDs.whisper.
+    // Prefer the canonical path for the configured model ID only when it matches the stored
+    // integrity fingerprint (or is already recorded as the installed catalog ID). Otherwise fall
+    // back to any sibling so an older model remains usable while an optional update downloads.
     private static func localWhisperModelDirectory() -> URL? {
+        if let canonical = canonicalWhisperModelDirectory() {
+            let matchesFingerprint = ModelIntegrityChecker.verify(
+                directory: canonical,
+                storedKey: kWhisperFingerprintKey
+            )
+            let matchesInstalledID = UserDefaults.standard.string(forKey: kInstalledWhisperModelIDKey) == ModelIDs.whisper
+            if matchesFingerprint || matchesInstalledID {
+                return canonical
+            }
+        }
+
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
         let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
 
-        // Primary: exact match on the configured model ID.
-        let canonical = whisperCacheDir.appendingPathComponent(ModelIDs.whisper)
-        if directoryContainsFiles(canonical) { return canonical }
-
-        // Fallback: scan siblings in case the folder was named differently
-        // (e.g. WhisperKit mapped the ID to a different local name on an older version).
         guard let entries = try? fm.contentsOfDirectory(
             at: whisperCacheDir,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
         ) else { return nil }
 
-        for entry in entries {
+        for entry in entries where entry.lastPathComponent != ModelIDs.whisper {
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             if isDir && directoryContainsFiles(entry) { return entry }
         }
         return nil
+    }
+
+    private static func canonicalWhisperModelDirectory() -> URL? {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let canonical = docs
+            .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+            .appendingPathComponent(ModelIDs.whisper)
+        return directoryContainsFiles(canonical) ? canonical : nil
+    }
+
+    private func removeStaleWhisperModelDirectories(keeping keepID: String) {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+        guard let entries = try? fm.contentsOfDirectory(
+            at: whisperCacheDir,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for entry in entries where entry.lastPathComponent != keepID {
+            try? fm.removeItem(at: entry)
+        }
     }
 
     private static func directoryContainsFiles(_ directory: URL) -> Bool {
@@ -339,7 +550,11 @@ final class ModelDownloadManager {
         isDownloading = true
         downloadError = nil
         beginBackgroundContinuation()
-        liveActivityCoordinator.startDownload(progress: overallDownloadProgress, detail: currentDownloadDetail)
+        liveActivityCoordinator.startDownload(
+            progress: overallDownloadProgress,
+            detail: currentDownloadDetail,
+            title: downloadLiveActivityTitle
+        )
         return task
     }
 
@@ -420,13 +635,40 @@ final class ModelDownloadManager {
         #endif
     }
 
+    /// Progress for the in-app top banner during a domain-scoped model update.
+    var updateBannerProgress: Double {
+        guard let domain = activeUpdateDomain else { return overallDownloadProgress }
+        switch domain {
+        case .speechRecognition: return min(max(whisperProgress, 0), 1)
+        case .writingAssistant: return min(max(llmProgress, 0), 1)
+        }
+    }
+
+    var updateBannerDetail: String {
+        currentDownloadDetail
+    }
+
     private var overallDownloadProgress: Double {
+        if let domain = activeUpdateDomain {
+            switch domain {
+            case .speechRecognition: return min(max(whisperProgress, 0), 1)
+            case .writingAssistant: return min(max(llmProgress, 0), 1)
+            }
+        }
         let whisper = isWhisperReady ? 1 : whisperProgress
         let llm = isLLMReady ? 1 : llmProgress
         return (whisper + llm) / 2
     }
 
     private var currentDownloadDetail: String {
+        if let domain = activeUpdateDomain {
+            switch domain {
+            case .speechRecognition:
+                return "Speech Recognition \(whisperProgress.formatted(.percent.precision(.fractionLength(0))))"
+            case .writingAssistant:
+                return "Writing Assistant \(llmProgress.formatted(.percent.precision(.fractionLength(0))))"
+            }
+        }
         if !isWhisperReady {
             return "Speech Recognition \(whisperProgress.formatted(.percent.precision(.fractionLength(0))))"
         }
@@ -436,9 +678,20 @@ final class ModelDownloadManager {
         return "Finalizing setup"
     }
 
+    private var downloadLiveActivityTitle: String {
+        if let domain = activeUpdateDomain {
+            return "Updating \(domain.displayName)"
+        }
+        return "Downloading Models"
+    }
+
     private func updateDownloadLiveActivityIfNeeded() {
         guard isDownloading else { return }
-        liveActivityCoordinator.updateDownload(progress: overallDownloadProgress, detail: currentDownloadDetail)
+        liveActivityCoordinator.updateDownload(
+            progress: overallDownloadProgress,
+            detail: currentDownloadDetail,
+            title: downloadLiveActivityTitle
+        )
     }
 
     private func endBackgroundContinuation() {
@@ -496,17 +749,20 @@ final class ModelDownloadManager {
         return "\(model): \(error.localizedDescription)"
     }
 
-    private func downloadWhisper(runID: UUID) async {
+    private func downloadWhisper(runID: UUID, forceNewCatalogID: Bool = false) async {
         do {
             guard downloadRunID == runID, !Task.isCancelled else { return }
 
-            let existingDir = Self.localWhisperModelDirectory()
-            let existingDownloadIsComplete = existingDir.map {
+            let existingDir = forceNewCatalogID
+                ? Self.canonicalWhisperModelDirectory()
+                : Self.localWhisperModelDirectory()
+            let existingDownloadIsComplete = !forceNewCatalogID && (existingDir.map {
                 ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
-            } ?? false
+            } ?? false)
 
             if !existingDownloadIsComplete,
-               let existingDir {
+               let existingDir,
+               !forceNewCatalogID {
                 if await validateLocalWhisperDirectory(existingDir, runID: runID) {
                     return
                 }
@@ -519,7 +775,7 @@ final class ModelDownloadManager {
                 }
             }
 
-            if !existingDownloadIsComplete {
+            if forceNewCatalogID || !existingDownloadIsComplete {
                 whisperProgress = 0.05
                 // Download model files with load: false — files land on disk without
                 // pulling CoreML weights into RAM. No progress callback is available here,
@@ -532,7 +788,7 @@ final class ModelDownloadManager {
                 let progressTask = Task { @MainActor [weak self] in
                     while !Task.isCancelled {
                         try? await Task.sleep(for: .seconds(1))
-                        guard let self, self.downloadRunID == runID, !self.isWhisperReady, !Task.isCancelled else { return }
+                        guard let self, self.downloadRunID == runID, !self.isWhisperReady || forceNewCatalogID, !Task.isCancelled else { return }
                         let next = min(self.whisperProgress + 0.002, 0.45)
                         if next > self.whisperProgress { self.whisperProgress = next }
                     }
@@ -553,7 +809,7 @@ final class ModelDownloadManager {
             guard downloadRunID == runID, !Task.isCancelled else { return }
             whisperProgress = 0.75
             let compileConfig = WhisperKitConfig(
-                modelFolder: Self.localWhisperModelDirectory()?.path,
+                modelFolder: (Self.canonicalWhisperModelDirectory() ?? Self.localWhisperModelDirectory())?.path,
                 computeOptions: TranscriptionService.whisperComputeOptions(),
                 load: false
             )
@@ -567,7 +823,7 @@ final class ModelDownloadManager {
             let compileProgressTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(1))
-                    guard let self, self.downloadRunID == runID, !self.isWhisperReady, !Task.isCancelled else { return }
+                    guard let self, self.downloadRunID == runID, !Task.isCancelled else { return }
                     let next = min(self.whisperProgress + 0.003, 0.95)
                     if next > self.whisperProgress { self.whisperProgress = next }
                 }
@@ -578,7 +834,7 @@ final class ModelDownloadManager {
             await compileKit.unloadModels()
 
             guard downloadRunID == runID, !Task.isCancelled else { return }
-            guard let completedDirectory = Self.localWhisperModelDirectory(),
+            guard let completedDirectory = Self.canonicalWhisperModelDirectory() ?? Self.localWhisperModelDirectory(),
                   let fingerprint = ModelIntegrityChecker.fingerprint(of: completedDirectory) else {
                 throw ModelValidationError.missingModelArtifacts
             }
@@ -586,6 +842,7 @@ final class ModelDownloadManager {
             whisperProgress = 1.0
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
+            UserDefaults.standard.set(completedDirectory.lastPathComponent, forKey: kInstalledWhisperModelIDKey)
         } catch is CancellationError {
             return
         } catch {
@@ -617,6 +874,7 @@ final class ModelDownloadManager {
             whisperProgress = 1
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
+            UserDefaults.standard.set(directory.lastPathComponent, forKey: kInstalledWhisperModelIDKey)
             return true
         } catch {
             return false
@@ -760,6 +1018,7 @@ final class ModelDownloadManager {
             llmProgress = 1.0
             isLLMReady = true
             UserDefaults.standard.set(true, forKey: kLLMReadyKey)
+            UserDefaults.standard.set(ModelIDs.llm, forKey: kInstalledLLMModelIDKey)
         } catch is CancellationError {
             return
         } catch {
@@ -892,13 +1151,19 @@ final class ModelDownloadManager {
         UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
         UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
         UserDefaults.standard.removeObject(forKey: kModelDownloadStartedKey)
+        UserDefaults.standard.removeObject(forKey: kInstalledWhisperModelIDKey)
+        UserDefaults.standard.removeObject(forKey: kInstalledLLMModelIDKey)
+        UserDefaults.standard.removeObject(forKey: kDeclinedWhisperUpdateIDKey)
+        UserDefaults.standard.removeObject(forKey: kDeclinedLLMUpdateIDKey)
         ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
         ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
         isWhisperReady = false
         isLLMReady = false
+        pendingModelUpdate = nil
         whisperProgress = 0
         llmProgress = 0
         downloadError = nil
+        activeUpdateDomain = nil
         // Invalidate in-flight callbacks before clearing state so stale downloads
         // cannot mark models ready after a reset.
         downloadRunID = UUID()
