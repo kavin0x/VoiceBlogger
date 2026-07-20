@@ -24,7 +24,6 @@ struct AboutView: View {
                 Section {
                     LabeledContent("Made by", value: "Kavin Shah")
                     LabeledContent("Version", value: version)
-                    LabeledContent("License", value: "Apache 2.0")
                     LabeledContent("Model quality", value: ModelQualityLevel.current.displayName)
                 }
 

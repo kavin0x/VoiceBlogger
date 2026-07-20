@@ -42,6 +42,8 @@ enum PromptBuilder {
     - NEVER write preambles or wrappers: no "Here is…", "Sure,", "Okay,", "Final answer:", or "Output:".
     - Do not wrap the whole reply in a markdown code fence.
     - Stop immediately after the last useful content line.
+    - Reduce the usage of the ">" character in the output.
+    - Always start the output with the title of the content. The title should be a single line, and should be the first line of the output.
     """
 
     nonisolated private static let faithfulnessRules = """
