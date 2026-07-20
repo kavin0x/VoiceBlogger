@@ -74,10 +74,13 @@ final class IntentFulfillment {
         guard !recorder.isRecording else { return }
 
         do {
-            await downloadManager.ensureWhisperWarm()
+            try await downloadManager.ensureWhisperWarm()
             try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
         } catch {
             appState.showError("Recording failed: \(error.localizedDescription)")
+            if !downloadManager.isWhisperReady {
+                appState.navigateTo(.modelDownload)
+            }
         }
     }
 

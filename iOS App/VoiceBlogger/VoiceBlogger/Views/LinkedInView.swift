@@ -208,14 +208,14 @@ struct LinkedInView: View {
                 fullText = try outputGuard.appending(chunk, to: fullText)
                 pendingCount += chunk.count
                 if pendingCount >= 20 {
-                    streamedText = fullText
+                    streamedText = GenerationOutputSanitizer.sanitizeForDisplay(fullText)
                     pendingCount = 0
                     await Task.yield()
                 }
             }
-            streamedText = fullText
-            guard !fullText.isEmpty else { return }
-            post.linkedinPost = fullText
+            let completedText = try LLMGenerationCompletion.validate(fullText)
+            streamedText = completedText
+            post.linkedinPost = completedText
             savePostContext()
             didComplete = true
             downloadManager.releaseLLMService()

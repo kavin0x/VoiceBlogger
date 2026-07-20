@@ -53,13 +53,10 @@ enum ModelIntegrityChecker {
     }
 
     static func verify(directory: URL, storedKey key: String) -> Bool {
-        guard let stored = UserDefaults.standard.string(forKey: key) else {
-            // No stored fingerprint — first run after adding this check. Accept and store.
-            if let fp = fingerprint(of: directory) {
-                store(fingerprint: fp, forKey: key)
-            }
-            return true
-        }
+        // A directory without a completion fingerprint may be a partially downloaded
+        // snapshot left behind by process termination. Never establish trust from the
+        // files being verified; only a completed load/download may store the baseline.
+        guard let stored = UserDefaults.standard.string(forKey: key) else { return false }
         guard let current = fingerprint(of: directory) else { return false }
         return current == stored
     }

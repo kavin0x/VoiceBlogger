@@ -35,8 +35,200 @@ struct MarkdownProcessor {
     }
 
     static func parse(_ markdown: String) -> [Block] {
-        var parser = Parser(markdown: markdown)
+        var parser = Parser(markdown: resolvingReferenceLinks(in: markdown))
         return parser.parseBlocks()
+    }
+
+    private static func resolvingReferenceLinks(in markdown: String) -> String {
+        let normalized = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        var lines = normalized.components(separatedBy: "\n")
+        var definitions: [String: String] = [:]
+        var activeFence: (character: Character, length: Int)?
+
+        for index in lines.indices {
+            let line = lines[index]
+            if let fence = activeFence {
+                if closesFence(line, fence: fence) { activeFence = nil }
+                continue
+            }
+            if let fence = openingFence(line) {
+                activeFence = fence
+                continue
+            }
+            if let definition = referenceDefinition(in: line) {
+                definitions[normalizedReferenceLabel(definition.label)] = definition.destination
+                lines[index] = ""
+            }
+        }
+        guard !definitions.isEmpty else { return normalized }
+
+        activeFence = nil
+        for index in lines.indices {
+            let line = lines[index]
+            if let fence = activeFence {
+                if closesFence(line, fence: fence) { activeFence = nil }
+                continue
+            }
+            if let fence = openingFence(line) {
+                activeFence = fence
+                continue
+            }
+            // Indented code blocks must keep literal reference-looking text.
+            if indentationCount(in: line) >= 4 {
+                continue
+            }
+            lines[index] = replacingReferences(in: line, definitions: definitions)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func indentationCount(in line: String) -> Int {
+        var count = 0
+        for character in line {
+            if character == " " {
+                count += 1
+            } else if character == "\t" {
+                count += 4
+            } else {
+                break
+            }
+        }
+        return count
+    }
+
+    private static func normalizedReferenceLabel(_ label: String) -> String {
+        label
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .lowercased()
+    }
+
+    private static func referenceDefinition(in line: String) -> (label: String, destination: String)? {
+        let pattern = #"^\s{0,3}\[([^\]]+)\]:\s*(\S+)(?:\s+(?:"([^"]*)"|'([^']*)'|\(([^)]*)\)))?\s*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let source = line as NSString
+        let range = NSRange(location: 0, length: source.length)
+        guard let match = regex.firstMatch(in: line, range: range) else { return nil }
+        let label = source.substring(with: match.range(at: 1))
+        let url = source.substring(with: match.range(at: 2))
+        let title = (3...5)
+            .compactMap { capture -> String? in
+                let captureRange = match.range(at: capture)
+                return captureRange.location == NSNotFound ? nil : source.substring(with: captureRange)
+            }
+            .first
+        let destination = title.map {
+            "\(url) \"\($0.replacingOccurrences(of: "\"", with: "\\\""))\""
+        } ?? url
+        return (label, destination)
+    }
+
+    private static func replacingReferences(
+        in line: String,
+        definitions: [String: String]
+    ) -> String {
+        var result = replaceMatches(
+            in: line,
+            pattern: #"\[([^\]\n]+)\]\[([^\]\n]*)\]"#,
+            definitions: definitions,
+            usesExplicitLabel: true
+        )
+        result = replaceMatches(
+            in: result,
+            pattern: #"(?<!!)\[([^\]\n]+)\](?![\[(])"#,
+            definitions: definitions,
+            usesExplicitLabel: false
+        )
+        return result
+    }
+
+    private static func replaceMatches(
+        in line: String,
+        pattern: String,
+        definitions: [String: String],
+        usesExplicitLabel: Bool
+    ) -> String {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return line }
+        let mutable = NSMutableString(string: line)
+        let matches = regex.matches(
+            in: line,
+            range: NSRange(location: 0, length: (line as NSString).length)
+        )
+        let codeSpans = inlineCodeSpanRanges(in: line)
+        for match in matches.reversed() {
+            if codeSpans.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+                continue
+            }
+            let text = mutable.substring(with: match.range(at: 1))
+            let explicit = usesExplicitLabel ? mutable.substring(with: match.range(at: 2)) : text
+            let label = normalizedReferenceLabel(explicit.isEmpty ? text : explicit)
+            guard let destination = definitions[label] else { continue }
+            mutable.replaceCharacters(in: match.range, with: "[\(text)](\(destination))")
+        }
+        return mutable as String
+    }
+
+    /// Ranges of CommonMark inline code spans (backtick-delimited) on a single line.
+    private static func inlineCodeSpanRanges(in line: String) -> [NSRange] {
+        let nsLine = line as NSString
+        var ranges: [NSRange] = []
+        var index = 0
+        let length = nsLine.length
+        while index < length {
+            var openerLength = 0
+            while index + openerLength < length,
+                  nsLine.character(at: index + openerLength) == 0x60 { // `
+                openerLength += 1
+            }
+            guard openerLength > 0 else {
+                index += 1
+                continue
+            }
+            let searchStart = index + openerLength
+            var closerStart = searchStart
+            var found: NSRange?
+            while closerStart < length {
+                var closerLength = 0
+                while closerStart + closerLength < length,
+                      nsLine.character(at: closerStart + closerLength) == 0x60 {
+                    closerLength += 1
+                }
+                if closerLength == openerLength {
+                    found = NSRange(
+                        location: index,
+                        length: (closerStart + closerLength) - index
+                    )
+                    break
+                }
+                closerStart += max(closerLength, 1)
+            }
+            if let span = found {
+                ranges.append(span)
+                index = span.location + span.length
+            } else {
+                index = searchStart
+            }
+        }
+        return ranges
+    }
+
+    private static func openingFence(_ line: String) -> (character: Character, length: Int)? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard let character = trimmed.first, character == "`" || character == "~" else { return nil }
+        let length = trimmed.prefix { $0 == character }.count
+        return length >= 3 ? (character, length) : nil
+    }
+
+    private static func closesFence(
+        _ line: String,
+        fence: (character: Character, length: Int)
+    ) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let length = trimmed.prefix { $0 == fence.character }.count
+        return length >= fence.length
+            && trimmed.dropFirst(length).trimmingCharacters(in: .whitespaces).isEmpty
     }
 }
 
@@ -115,11 +307,11 @@ private struct Parser {
                 return .heading(level: setext, text: text)
             }
 
-            paragraphLines.append(trimmed)
+            paragraphLines.append(String(line.drop(while: { $0 == " " || $0 == "\t" })))
             index += 1
         }
 
-        return .paragraph(paragraphLines.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines))
+        return .paragraph(paragraphLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private mutating func parseFencedCodeBlock(openingFence: Fence) -> MarkdownProcessor.Block {
@@ -215,8 +407,8 @@ private struct Parser {
 
         while index < lines.count {
             let line = lines[index]
-            let marker: String
-            let content: String
+            let sourceMarker: String
+            let sourceContent: String
             let itemIndent: Int
 
             switch markerKind {
@@ -224,17 +416,21 @@ private struct Parser {
                 guard let parsed = unorderedListMarker(in: line), parsed.indent == baseIndent else {
                     return listBlock(markerKind: markerKind, start: startNumber, items: items)
                 }
-                marker = parsed.marker
-                content = parsed.content
+                sourceMarker = parsed.marker
+                sourceContent = parsed.content
                 itemIndent = parsed.contentIndent
             case .ordered:
                 guard let parsed = orderedListMarker(in: line), parsed.indent == baseIndent else {
                     return listBlock(markerKind: markerKind, start: startNumber, items: items)
                 }
-                marker = "\(parsed.number)\(parsed.delimiter)"
-                content = parsed.content
+                sourceMarker = "\(parsed.number)\(parsed.delimiter)"
+                sourceContent = parsed.content
                 itemIndent = parsed.contentIndent
             }
+
+            let task = taskListItem(in: sourceContent)
+            let marker = task.map { $0.isChecked ? "☑︎" : "☐" } ?? sourceMarker
+            let content = task?.content ?? sourceContent
 
             index += 1
             var childLines: [String] = []
@@ -267,6 +463,18 @@ private struct Parser {
         }
 
         return listBlock(markerKind: markerKind, start: startNumber, items: items)
+    }
+
+    private func taskListItem(in content: String) -> (isChecked: Bool, content: String)? {
+        guard content.count >= 3, content.first == "[" else { return nil }
+        let marker = content.prefix(3).lowercased()
+        guard marker == "[ ]" || marker == "[x]" else { return nil }
+        let remainder = content.dropFirst(3)
+        guard remainder.isEmpty || remainder.first?.isWhitespace == true else { return nil }
+        return (
+            isChecked: marker == "[x]",
+            content: remainder.trimmingCharacters(in: .whitespaces)
+        )
     }
 
     private func listBlock(markerKind: ListMarkerKind, start: Int, items: [MarkdownProcessor.ListItem]) -> MarkdownProcessor.Block {

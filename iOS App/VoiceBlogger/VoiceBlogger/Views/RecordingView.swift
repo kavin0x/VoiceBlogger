@@ -170,7 +170,7 @@ struct RecordingView: View {
                 return
             }
             do {
-                await downloadManager.ensureWhisperWarm()
+                try await downloadManager.ensureWhisperWarm()
                 try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
                 HapticFeedback.recordToggle()
                 // Attach late if warm completes after recording started
@@ -183,6 +183,9 @@ struct RecordingView: View {
                 }
             } catch {
                 appState.showError("Recording failed: \(error.localizedDescription)")
+                if !downloadManager.isWhisperReady {
+                    appState.navigateTo(.modelDownload)
+                }
             }
         }
     }

@@ -5,6 +5,7 @@
 //  Created by Kavin Shah on 5/30/26.
 //
 
+import Foundation
 import Testing
 @testable import VoiceBlogger
 
@@ -115,9 +116,14 @@ struct VoiceBloggerTests {
         #expect(system.contains("preserve the transcript's natural intent"))
         #expect(system.contains("MARKDOWN OUTPUT CONTRACT"))
         #expect(system.contains("Return valid Markdown as the final answer"))
+        #expect(system.contains("OUTPUT CONTRACT (mandatory)"))
+        #expect(system.contains("NEVER output reasoning"))
+        #expect(system.contains("FAITHFULNESS (no mistakes)"))
+        #expect(!system.contains("REASONING (internal"))
         #expect(system.contains("Medium and long outputs should include multiple Markdown features"))
         #expect(system.contains("Make the post Markdown-rich"))
         #expect(user.contains("Use common sense to decide whether it should read as a blog post, meeting notes, or personal notes"))
+        #expect(user.contains("Reply with ONLY the finished document"))
     }
 
     @Test func promptBuilderRoutesMeetingNotesAwayFromBlogPrompt() {
@@ -153,12 +159,11 @@ struct VoiceBloggerTests {
         let system = messages.first?["content"] ?? ""
         let user = messages.dropFirst().first?["content"] ?? ""
 
-        #expect(system.contains("Original Research / Data Insights"))
-        #expect(system.contains("Project Update / Milestone"))
-        #expect(system.contains("Event / Long-Form Recap"))
-        #expect(system.contains("Return ONE finished LinkedIn post only"))
-        #expect(system.contains("2-3 highly relevant hashtags"))
-        #expect(user.contains("Select the best POST TYPE TEMPLATE"))
+        #expect(system.contains("Write ONE LinkedIn post"))
+        #expect(system.contains("101-150 words total"))
+        #expect(system.contains("Do not invent facts, metrics, or claims"))
+        #expect(system.contains("Hashtags: 3-5 on the final line only"))
+        #expect(user.contains("Write a LinkedIn post from this content"))
         #expect(user.contains("We shipped the beta"))
     }
 
@@ -251,6 +256,66 @@ struct VoiceBloggerTests {
         #expect(!GenerationOutputGuard.hasRunawayRepetition(in: post))
     }
 
+    @Test func generationOutputSanitizerStripsThinkBlocksAndPreamble() {
+        let raw = """
+        <think>
+        First I will identify the format and list the facts.
+        </think>
+        Here is the blog post:
+
+        # Weekly Notes
+
+        - Send Sam the invoice
+        """
+
+        let cleaned = GenerationOutputSanitizer.sanitize(raw)
+        #expect(!cleaned.contains("<think>"))
+        #expect(!cleaned.contains("First I will identify"))
+        #expect(!cleaned.contains("Here is the blog post"))
+        #expect(cleaned.hasPrefix("# Weekly Notes"))
+        #expect(cleaned.contains("Send Sam the invoice"))
+    }
+
+    @Test func generationOutputSanitizerStripsLabeledReasoning() {
+        let raw = """
+        REASONING:
+        This looks like personal notes about errands.
+
+        - Order coffee filters
+        - Draft workshop outline
+        """
+
+        let cleaned = GenerationOutputSanitizer.sanitize(raw)
+        #expect(!cleaned.contains("REASONING"))
+        #expect(!cleaned.contains("This looks like personal notes"))
+        #expect(cleaned.contains("Order coffee filters"))
+    }
+
+    @Test func generationOutputSanitizerHidesOpenThinkDuringStreaming() {
+        let partial = """
+        <think>
+        Still figuring out the structure
+        """
+
+        #expect(GenerationOutputSanitizer.sanitizeForDisplay(partial).isEmpty)
+
+        let closedThenContent = """
+        <think>plan</think>
+        - Buy milk
+        """
+        #expect(GenerationOutputSanitizer.sanitizeForDisplay(closedThenContent) == "- Buy milk")
+    }
+
+    @Test func generationCompletionValidateSanitizesBeforeAccepting() throws {
+        let raw = """
+        Sure, here are the notes:
+
+        - Call Jordan
+        """
+        let cleaned = try LLMGenerationCompletion.validate(raw)
+        #expect(cleaned == "- Call Jordan")
+    }
+
     @Test func markdownProcessorParsesSetextAndIndentedCode() {
         let markdown = """
         Setext Title
@@ -299,6 +364,225 @@ struct VoiceBloggerTests {
     @Test func transcriptMergeSkipsDuplicateChunk() {
         let existing = "one two three"
         #expect(TranscriptMergeUtility.merge(existing: existing, newChunk: "two three") == "one two three")
+    }
+
+    @Test func modelIntegrityRejectsUntrustedPartialDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let key = "model-integrity-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            ModelIntegrityChecker.invalidate(forKey: key)
+        }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("partial".utf8).write(to: directory.appendingPathComponent("config.json"))
+
+        #expect(!ModelIntegrityChecker.verify(directory: directory, storedKey: key))
+    }
+
+    @Test func modelIntegrityAcceptsOnlyStoredMatchingFingerprint() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let key = "model-integrity-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            ModelIntegrityChecker.invalidate(forKey: key)
+        }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("complete".utf8).write(to: directory.appendingPathComponent("weights.safetensors"))
+        let fingerprint = try #require(ModelIntegrityChecker.fingerprint(of: directory))
+        ModelIntegrityChecker.store(fingerprint: fingerprint, forKey: key)
+
+        #expect(ModelIntegrityChecker.verify(directory: directory, storedKey: key))
+
+        try Data("changed".utf8).write(to: directory.appendingPathComponent("weights.safetensors"))
+        #expect(!ModelIntegrityChecker.verify(directory: directory, storedKey: key))
+    }
+
+    @Test func markdownProcessorParsesGFMTaskLists() {
+        let blocks = MarkdownProcessor.parse("""
+        - [x] Download models
+        - [ ] Generate the post
+        """)
+
+        #expect(blocks == [
+            .unorderedList([
+                .init(marker: "☑︎", text: "Download models", children: []),
+                .init(marker: "☐", text: "Generate the post", children: [])
+            ])
+        ])
+    }
+
+    @Test func transcriptionRefinementFallbackDoesNotShowFailure() {
+        let resolution = TranscriptionFailurePolicy.resolve(
+            isRefinement: true,
+            hasUsableTranscript: true
+        )
+
+        #expect(resolution == .retainPreview)
+        #expect(!resolution.showsError)
+        #expect(resolution.transcriptionState == .complete)
+    }
+
+    @Test func transcriptionFailureWithoutTranscriptRemainsRetryable() {
+        let resolution = TranscriptionFailurePolicy.resolve(
+            isRefinement: false,
+            hasUsableTranscript: false
+        )
+
+        #expect(resolution == .retryableFailure)
+        #expect(resolution.showsError)
+        #expect(resolution.transcriptionState == .inProgress)
+    }
+
+    @Test func generationCompletionRejectsWhitespaceOnlyOutput() {
+        #expect(throws: LLMGenerationError.emptyOutput) {
+            try LLMGenerationCompletion.validate(" \n\t ")
+        }
+    }
+
+    @Test func hubDownloadPolicyUsesBoundedParallelism() {
+        #expect(HubDownloadPolicy.maximumConcurrentTransfers >= 4)
+        #expect(HubDownloadPolicy.maximumConcurrentTransfers <= 8)
+    }
+
+    @Test func cancellationDoesNotInvalidateDownloadedModels() {
+        #expect(!ModelLoadFailurePolicy.shouldInvalidate(CancellationError(), integrityMatches: false))
+        #expect(!ModelLoadFailurePolicy.shouldInvalidate(
+            URLError(.cannotDecodeContentData),
+            integrityMatches: true
+        ))
+        #expect(ModelLoadFailurePolicy.shouldInvalidate(
+            URLError(.cannotDecodeContentData),
+            integrityMatches: false
+        ))
+    }
+
+    @Test func markdownProcessorPreservesHardLineBreaks() {
+        let blocks = MarkdownProcessor.parse("First line  \nSecond line")
+        #expect(blocks == [.paragraph("First line  \nSecond line")])
+    }
+
+    @Test func markdownProcessorResolvesReferenceLinksAcrossDocument() {
+        let blocks = MarkdownProcessor.parse("""
+        Read [the guide][guide].
+
+        [guide]: https://example.com
+        """)
+
+        #expect(blocks == [.paragraph("Read [the guide](https://example.com).")])
+    }
+
+    @Test func markdownProcessorLeavesReferencesInsideCodeFencesUntouched() {
+        let blocks = MarkdownProcessor.parse("""
+        ```
+        [guide]: https://inside.example
+        [guide]
+        ```
+
+        [guide]: https://outside.example
+        """)
+
+        #expect(blocks == [
+            .codeBlock(
+                language: nil,
+                code: "[guide]: https://inside.example\n[guide]"
+            )
+        ])
+    }
+
+    @Test func markdownProcessorResolvesShortcutReferencesWithTitles() {
+        let blocks = MarkdownProcessor.parse("""
+        Read [Guide].
+
+        [guide]: https://example.com "Documentation"
+        """)
+
+        #expect(blocks == [
+            .paragraph(#"Read [Guide](https://example.com "Documentation")."#)
+        ])
+    }
+
+    @Test func markdownProcessorLeavesReferencesInsideInlineAndIndentedCodeUntouched() {
+        let blocks = MarkdownProcessor.parse("""
+        Use `[guide]` in docs.
+
+            [guide]
+
+        [guide]: https://example.com
+        """)
+
+        #expect(blocks == [
+            .paragraph("Use `[guide]` in docs."),
+            .codeBlock(language: nil, code: "[guide]")
+        ])
+    }
+
+    @Test func installedModelsAreKeptAcrossUpdatesWithoutReinstall() {
+        #expect(
+            ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+                directoryExists: true,
+                integrityMatches: false,
+                wasMarkedReady: true
+            )
+        )
+        #expect(
+            ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+                directoryExists: true,
+                integrityMatches: true,
+                wasMarkedReady: false
+            )
+        )
+        #expect(
+            !ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+                directoryExists: true,
+                integrityMatches: false,
+                wasMarkedReady: false
+            )
+        )
+        #expect(
+            !ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+                directoryExists: false,
+                integrityMatches: false,
+                wasMarkedReady: true
+            )
+        )
+    }
+
+    @Test func localModelDirectoryIsPreferredOverNetworkReinstall() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let key = "llm-integrity-\(UUID().uuidString)"
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            ModelIntegrityChecker.invalidate(forKey: key)
+        }
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("partial".utf8).write(to: directory.appendingPathComponent("config.json"))
+
+        #expect(!ModelIntegrityChecker.verify(directory: directory, storedKey: key))
+        #expect(!LocalModelTrustPolicy.shouldPreferNetworkResume(hasLocalDirectory: true))
+        #expect(LocalModelTrustPolicy.shouldPreferNetworkResume(hasLocalDirectory: false))
+    }
+
+    @Test func cancelledWhisperValidationDoesNotContinueDownload() {
+        #expect(
+            WhisperDownloadContinuation.shouldContinueAfterLocalValidation(
+                validationSucceeded: false,
+                runStillActive: false,
+                isCancelled: true
+            ) == false
+        )
+        #expect(
+            WhisperDownloadContinuation.shouldContinueAfterLocalValidation(
+                validationSucceeded: false,
+                runStillActive: true,
+                isCancelled: false
+            )
+        )
     }
 
 }

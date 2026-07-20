@@ -277,19 +277,16 @@ struct BlogView: View {
                 pendingDisplayCharacterCount += chunk.count
 
                 if pendingDisplayCharacterCount >= 24 || Date().timeIntervalSince(lastDisplayUpdate) >= 0.05 {
-                    streamedText = fullText
+                    streamedText = GenerationOutputSanitizer.sanitizeForDisplay(fullText)
                     pendingDisplayCharacterCount = 0
                     lastDisplayUpdate = Date()
                     await Task.yield()
                 }
             }
-            streamedText = fullText
-            guard !fullText.isEmpty else {
-                generationError = "No content was generated. Please try again."
-                return
-            }
-            post.blogContent = fullText
-            post.title = PromptBuilder.extractTitle(from: fullText)
+            let completedText = try LLMGenerationCompletion.validate(fullText)
+            streamedText = completedText
+            post.blogContent = completedText
+            post.title = PromptBuilder.extractTitle(from: completedText)
             savePostContext()
             didComplete = true
             // Keep LLM loaded — InstagramView reuses it immediately after blog generation.

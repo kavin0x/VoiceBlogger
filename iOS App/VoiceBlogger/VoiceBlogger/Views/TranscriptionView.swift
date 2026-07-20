@@ -13,6 +13,8 @@ struct TranscriptionView: View {
     @State private var error: String?
     @State private var editableTranscript = ""
     @State private var detectedLanguage: String?
+    @State private var showAudioShareSheet = false
+    @State private var transcriptionAttemptID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -49,6 +51,17 @@ struct TranscriptionView: View {
                     }
                 }
 
+                if let audioURL = availableAudioURL {
+                    Section("Recording") {
+                        AudioPlayerView(audioURL: audioURL)
+                        Button {
+                            showAudioShareSheet = true
+                        } label: {
+                            Label("Share or Export Audio", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                }
+
                 if !isTranscribing && post.transcriptionState == .inProgress && !isRefining {
                     if recorder.isFinalizingTranscript {
                         Section {
@@ -70,12 +83,6 @@ struct TranscriptionView: View {
                 }
 
                 if !post.transcript.isEmpty || !editableTranscript.isEmpty {
-                    if let audioURL = post.audioFileURL {
-                        Section {
-                            AudioPlayerView(audioURL: audioURL)
-                        }
-                    }
-
                     Section {
                         if recorder.isLivePreview || isRefining {
                             Label("Preview", systemImage: "text.line.first.and.arrowtriangle.forward")
@@ -168,6 +175,11 @@ struct TranscriptionView: View {
                 guard !isFinalizing, post.transcriptionState == .inProgress else { return }
                 applyLiveTranscriptAndRefine()
             }
+            .sheet(isPresented: $showAudioShareSheet) {
+                if let audioURL = availableAudioURL {
+                    ShareSheet(items: [audioURL])
+                }
+            }
             .task {
                 if post.transcriptionState == .untranscribed {
                     runTranscription(isRefinement: false)
@@ -205,6 +217,9 @@ struct TranscriptionView: View {
         }
         error = nil
         post.transcriptionState = .inProgress
+        let refinementFallback = isRefinement ? post.transcript : nil
+        let attemptID = UUID()
+        transcriptionAttemptID = attemptID
 
         Task {
             do {
@@ -215,6 +230,7 @@ struct TranscriptionView: View {
                     mode: mode,
                     onPartial: { partial in
                         Task { @MainActor in
+                            guard transcriptionAttemptID == attemptID else { return }
                             if isRefinement {
                                 editableTranscript = partial
                             } else {
@@ -224,23 +240,41 @@ struct TranscriptionView: View {
                         }
                     }
                 )
+                guard transcriptionAttemptID == attemptID else { return }
+                transcriptionAttemptID = UUID()
                 // Keep Whisper warm until blog generation (deferred unload).
                 post.transcript = finalTranscript.displayText
                 editableTranscript = finalTranscript.displayText
                 post.detectedSpeakerCount = finalTranscript.detectedSpeakerCount
                 post.transcriptionState = .complete
+                self.error = nil
+                appState.dismissError()
                 if case .transcribe(let lang) = mode, let lang {
                     detectedLanguage = lang
                 }
                 try? modelContext.save()
                 BackgroundTranscriptionScheduler.schedule(postID: post.id)
             } catch {
-                self.error = error.localizedDescription
-                if !isRefinement {
-                    post.transcriptionState = .inProgress
-                } else if !editableTranscript.isEmpty {
-                    post.transcriptionState = .complete
+                guard transcriptionAttemptID == attemptID else { return }
+                transcriptionAttemptID = UUID()
+                let candidate = isRefinement ? (refinementFallback ?? "") : editableTranscript
+                let hasUsableTranscript = !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let resolution = TranscriptionFailurePolicy.resolve(
+                    isRefinement: isRefinement,
+                    hasUsableTranscript: hasUsableTranscript
+                )
+                post.transcriptionState = resolution.transcriptionState
+                if resolution.showsError {
+                    self.error = error.localizedDescription
+                } else {
+                    if let refinementFallback {
+                        post.transcript = refinementFallback
+                        editableTranscript = refinementFallback
+                    }
+                    self.error = nil
+                    appState.dismissError()
                 }
+                try? modelContext.save()
             }
             isTranscribing = false
             isRefining = false
@@ -267,5 +301,13 @@ struct TranscriptionView: View {
 
         saveEditedTranscript()
         appState.navigateTo(.preparingBlog(postID: post.id))
+    }
+
+    private var availableAudioURL: URL? {
+        guard let url = post.audioFileURL,
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
     }
 }

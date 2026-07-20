@@ -210,14 +210,14 @@ struct InstagramView: View {
                 fullText = try outputGuard.appending(chunk, to: fullText)
                 pendingCount += chunk.count
                 if pendingCount >= 20 {
-                    streamedText = fullText
+                    streamedText = GenerationOutputSanitizer.sanitizeForDisplay(fullText)
                     pendingCount = 0
                     await Task.yield()
                 }
             }
-            streamedText = fullText
-            guard !fullText.isEmpty else { return }
-            post.instagramCaptions = fullText
+            let completedText = try LLMGenerationCompletion.validate(fullText)
+            streamedText = completedText
+            post.instagramCaptions = completedText
             savePostContext()
             didComplete = true
             downloadManager.releaseLLMService()

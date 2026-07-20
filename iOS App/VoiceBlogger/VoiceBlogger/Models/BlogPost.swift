@@ -7,6 +7,28 @@ enum TranscriptionState: Int, Codable {
     case complete       // transcript is final
 }
 
+enum TranscriptionFailureResolution: Equatable {
+    case retainPreview
+    case retryableFailure
+
+    var showsError: Bool {
+        self == .retryableFailure
+    }
+
+    var transcriptionState: TranscriptionState {
+        switch self {
+        case .retainPreview: .complete
+        case .retryableFailure: .inProgress
+        }
+    }
+}
+
+enum TranscriptionFailurePolicy {
+    static func resolve(isRefinement: Bool, hasUsableTranscript: Bool) -> TranscriptionFailureResolution {
+        isRefinement && hasUsableTranscript ? .retainPreview : .retryableFailure
+    }
+}
+
 @Model
 final class BlogPost {
     var id: UUID = UUID()

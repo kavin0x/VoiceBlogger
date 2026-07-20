@@ -3,9 +3,14 @@ import MLXLMCommon
 import HuggingFace
 import Tokenizers
 
+enum HubDownloadPolicy {
+    // More parallel requests than this causes connection churn and disk contention on
+    // iOS while providing no benefit for the small number of large model shards.
+    static let maximumConcurrentTransfers = 8
+}
+
 // Adapts HuggingFace.HubClient to the MLXLMCommon.Downloader protocol.
 // Equivalent to what the #hubDownloader() macro expands to.
-// sunday july 19 2026 (i have to add some change in order to test the cicd pipeline >:( )
 struct HubDownloader: MLXLMCommon.Downloader {
     private let upstream: HuggingFace.HubClient
 
@@ -15,9 +20,8 @@ struct HubDownloader: MLXLMCommon.Downloader {
 
     private static func makeClient() -> HuggingFace.HubClient {
         let config = URLSessionConfiguration.default
-        // Max connections per host — HF's CDN is multi-host (CDN redirects), so iOS enforces
-        // this per resolved IP. Keep this high enough to saturate bandwidth across shards.
-        config.httpMaximumConnectionsPerHost = 24
+        config.httpMaximumConnectionsPerHost = HubDownloadPolicy.maximumConcurrentTransfers
+        config.httpShouldUsePipelining = true
         // Per-packet idle timeout — large shards can stall 60-120s between TCP retries on
         // a flaky link before the next chunk arrives. 300s prevents spurious -1001 kills.
         config.timeoutIntervalForRequest = 300
@@ -26,9 +30,9 @@ struct HubDownloader: MLXLMCommon.Downloader {
         // Disable local disk cache — model files are already persisted by HubClient's own
         // cache; URLCache just wastes memory and slows the pipeline.
         config.urlCache = nil
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.requestCachePolicy = .useProtocolCachePolicy
         config.waitsForConnectivity = true
-        config.networkServiceType = .responsiveData
+        config.networkServiceType = .default
         config.httpAdditionalHeaders = ["Accept-Encoding": "br, gzip, deflate"]
         // Allow downloads over cellular as well as Wi-Fi.
         config.allowsCellularAccess = true
@@ -47,12 +51,11 @@ struct HubDownloader: MLXLMCommon.Downloader {
         guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
             throw HubDownloaderError.invalidRepositoryID(id)
         }
-        // Match httpMaximumConnectionsPerHost so every slot can be used simultaneously.
         return try await upstream.downloadSnapshot(
             of: repoID,
             revision: revision ?? "main",
             matching: patterns,
-            maxConcurrentDownloads: 24,
+            maxConcurrentDownloads: HubDownloadPolicy.maximumConcurrentTransfers,
             progressHandler: { @MainActor progress in progressHandler(progress) }
         )
     }

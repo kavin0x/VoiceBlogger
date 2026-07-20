@@ -87,7 +87,14 @@ struct BlogGenerationPrepView: View {
         await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
 
         prepStep = String(localized: "Loading writing assistant…")
-        _ = try? await downloadManager.loadedLLMService()
+        do {
+            _ = try await downloadManager.loadedLLMService()
+        } catch {
+            self.error = String(
+                localized: "The writing assistant could not load: \(error.localizedDescription)"
+            )
+            return
+        }
 
         appState.navigateTo(.generatingBlog(post: post))
     }

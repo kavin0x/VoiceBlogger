@@ -78,7 +78,7 @@ private struct MarkdownBlockView: View {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(ordered ? item.marker : "•")
+                        Text(listMarker(for: item, ordered: ordered))
                             .font(.body)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
@@ -96,6 +96,12 @@ private struct MarkdownBlockView: View {
                 .id(index)
             }
         }
+    }
+
+    private func listMarker(for item: MarkdownProcessor.ListItem, ordered: Bool) -> String {
+        if ordered { return item.marker }
+        if item.marker == "☑︎" || item.marker == "☐" { return item.marker }
+        return "•"
     }
 
     private func codeBlock(_ code: String, language: String?) -> some View {

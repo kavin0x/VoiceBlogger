@@ -66,51 +66,108 @@ final class ModelDownloadManager {
         if validationCacheValid && allModelsReady { return }
 
         let whisperDir = Self.localWhisperModelDirectory()
-        if let whisperDir,
-           ModelIntegrityChecker.verify(directory: whisperDir, storedKey: kWhisperFingerprintKey) {
+        let whisperIntegrity = whisperDir.map {
+            ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
+        } ?? false
+        let whisperWasReady = isWhisperReady
+            || UserDefaults.standard.bool(forKey: kWhisperReadyKey)
+            || Self.legacyReadyFlag(for: .whisper)
+
+        if ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+            directoryExists: whisperDir != nil,
+            integrityMatches: whisperIntegrity,
+            wasMarkedReady: whisperWasReady
+        ), let whisperDir {
+            // Keep installed models across app updates. Fingerprint may be missing
+            // (legacy) or drift (CoreML rewrite) without requiring a reinstall.
+            if !whisperIntegrity, let fp = ModelIntegrityChecker.fingerprint(of: whisperDir) {
+                ModelIntegrityChecker.store(fingerprint: fp, forKey: kWhisperFingerprintKey)
+            }
             if !isWhisperReady {
                 isWhisperReady = true
                 UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
             }
             whisperProgress = 1.0
         } else if whisperDir != nil {
-            // Directory exists but fingerprint check failed — treat as corrupt and re-download.
+            // Partial cache without a prior completion — resume in place; never delete.
+            isWhisperReady = false
+            whisperProgress = 0
+            UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        } else if isWhisperReady || whisperWasReady {
             isWhisperReady = false
             whisperProgress = 0
             UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
             ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
-        } else if isWhisperReady {
-            isWhisperReady = false
-            whisperProgress = 0
-            UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
-            ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
         }
 
         let llmDir = LLMService.localModelDirectory()
-        if let llmDir,
-           ModelIntegrityChecker.verify(directory: llmDir, storedKey: kLLMFingerprintKey) {
+        let llmIntegrity = llmDir.map {
+            ModelIntegrityChecker.verify(directory: $0, storedKey: kLLMFingerprintKey)
+        } ?? false
+        let llmWasReady = isLLMReady
+            || UserDefaults.standard.bool(forKey: kLLMReadyKey)
+            || Self.legacyReadyFlag(for: .llm)
+
+        if ModelInstallRetentionPolicy.shouldKeepInstalledModel(
+            directoryExists: llmDir != nil,
+            integrityMatches: llmIntegrity,
+            wasMarkedReady: llmWasReady
+        ), let llmDir {
+            if !llmIntegrity, let fp = ModelIntegrityChecker.fingerprint(of: llmDir) {
+                ModelIntegrityChecker.store(fingerprint: fp, forKey: kLLMFingerprintKey)
+            }
             if !isLLMReady {
                 isLLMReady = true
                 UserDefaults.standard.set(true, forKey: kLLMReadyKey)
             }
             llmProgress = 1.0
         } else if llmDir != nil {
-            // Directory exists but fingerprint check failed — treat as corrupt and re-download.
+            isLLMReady = false
+            llmProgress = 0
+            UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        } else if isLLMReady || llmWasReady {
             isLLMReady = false
             llmProgress = 0
             UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
             ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
-        } else if isLLMReady {
-            isLLMReady = false
-            llmProgress = 0
-            UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
-            ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
         }
 
         if allModelsReady {
             UserDefaults.standard.removeObject(forKey: kModelDownloadStartedKey)
             validationCacheValid = true
         }
+    }
+
+    private enum LegacyReadyModel {
+        case whisper
+        case llm
+    }
+
+    /// Older builds used different ready-key suffixes; treat any of them as evidence
+    /// the user already completed installation so an app update does not reinstall.
+    private static func legacyReadyFlag(for model: LegacyReadyModel) -> Bool {
+        let keys: [String]
+        switch model {
+        case .whisper:
+            keys = [
+                "whisperModelReady_v3",
+                "whisperModelReady_v2",
+                "whisperModelReady_v1",
+                "whisperModelReady"
+            ]
+        case .llm:
+            keys = [
+                "llmModelReady_v3",
+                "llmModelReady_v2",
+                "llmModelReady_v1",
+                "llmModelReady"
+            ]
+        }
+        return keys.contains { UserDefaults.standard.bool(forKey: $0) }
     }
 
     // Returns the local WhisperKit model directory if it exists and contains at least one file.
@@ -169,12 +226,30 @@ final class ModelDownloadManager {
                 modelFolder: localDir?.path,
                 computeOptions: TranscriptionService.whisperComputeOptions()
             )
-            guard !Task.isCancelled, let kit = try? await WhisperKit(config) else { return }
+            guard !Task.isCancelled else { return }
+            let kit: WhisperKit
+            do {
+                kit = try await WhisperKit(config)
+            } catch {
+                let integrityMatches = localDir.map {
+                    ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
+                } ?? false
+                if ModelLoadFailurePolicy.shouldInvalidate(error, integrityMatches: integrityMatches) {
+                    self.markWhisperLoadFailure(error)
+                }
+                return
+            }
             guard !Task.isCancelled else { return }
             do {
                 try await kit.loadModels()
             } catch {
                 await kit.unloadModels()
+                let integrityMatches = localDir.map {
+                    ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
+                } ?? false
+                if ModelLoadFailurePolicy.shouldInvalidate(error, integrityMatches: integrityMatches) {
+                    self.markWhisperLoadFailure(error)
+                }
                 return
             }
             guard !Task.isCancelled else {
@@ -201,13 +276,27 @@ final class ModelDownloadManager {
     /// Waits for any in-flight warm task, then warms if whisperKit is still nil.
     /// Call this just before transcription begins so the hot WhisperKit instance
     /// is ready for TranscriptionService.make(reusing:) without a cold reload.
-    func ensureWhisperWarm() async {
+    func ensureWhisperWarm() async throws {
         if let task = whisperWarmTask {
             await task.value
         }
         if whisperKit == nil {
             await warmWhisper()
         }
+        guard whisperKit != nil else {
+            throw ModelValidationError.whisperLoadFailed
+        }
+    }
+
+    private func markWhisperLoadFailure(_ error: Error) {
+        whisperKit = nil
+        isWhisperReady = false
+        whisperProgress = 0
+        validationCacheValid = false
+        UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+        ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
+        UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        downloadError = "Speech Recognition could not load: \(error.localizedDescription)"
     }
 
     /// Pre-warm the LLM while the user reviews or edits a transcript.
@@ -275,7 +364,13 @@ final class ModelDownloadManager {
             // resolve() is pure network->disk: it holds zero RAM, so running it alongside
             // whisper is safe. Only the subsequent _load() step (loadContainer(from:directory))
             // pulls weights into memory, and that is deferred until after whisper unloads.
-            let prefetchTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let localLLMDirectory = LLMService.localModelDirectory()
+            let prefetchTask = Task.detached(priority: .userInitiated) { [weak self] () -> URL? in
+                // Prefer on-disk snapshots after app updates. Incomplete caches fail
+                // local load and fall through to resumable network download.
+                if let localDirectory = localLLMDirectory {
+                    return localDirectory
+                }
                 return try? await resolve(
                     configuration: ModelConfiguration(id: ModelIDs.llm),
                     from: HubDownloader(),
@@ -289,7 +384,7 @@ final class ModelDownloadManager {
                             }
                         }
                     }
-                )
+                ).modelDirectory
             }
             await downloadWhisper(runID: runID)
 
@@ -304,12 +399,13 @@ final class ModelDownloadManager {
                 await prepareForLLMGenerationBarrier()
                 let prefetchedDir = await prefetchTask.value
                 guard downloadRunID == runID, !Task.isCancelled else { return }
-                await downloadLLM(prefetchedDirectory: prefetchedDir?.modelDirectory, runID: runID)
+                await downloadLLM(prefetchedDirectory: prefetchedDir, runID: runID)
             } else {
                 prefetchTask.cancel()
             }
         } else if !isLLMReady {
-            await downloadLLM(prefetchedDirectory: nil, runID: runID)
+            let local = LLMService.localModelDirectory()
+            await downloadLLM(prefetchedDirectory: local, runID: runID)
         }
     }
 
@@ -405,8 +501,25 @@ final class ModelDownloadManager {
             guard downloadRunID == runID, !Task.isCancelled else { return }
 
             let existingDir = Self.localWhisperModelDirectory()
+            let existingDownloadIsComplete = existingDir.map {
+                ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
+            } ?? false
 
-            if existingDir == nil {
+            if !existingDownloadIsComplete,
+               let existingDir {
+                if await validateLocalWhisperDirectory(existingDir, runID: runID) {
+                    return
+                }
+                guard WhisperDownloadContinuation.shouldContinueAfterLocalValidation(
+                    validationSucceeded: false,
+                    runStillActive: downloadRunID == runID,
+                    isCancelled: Task.isCancelled
+                ) else {
+                    return
+                }
+            }
+
+            if !existingDownloadIsComplete {
                 whisperProgress = 0.05
                 // Download model files with load: false — files land on disk without
                 // pulling CoreML weights into RAM. No progress callback is available here,
@@ -465,6 +578,11 @@ final class ModelDownloadManager {
             await compileKit.unloadModels()
 
             guard downloadRunID == runID, !Task.isCancelled else { return }
+            guard let completedDirectory = Self.localWhisperModelDirectory(),
+                  let fingerprint = ModelIntegrityChecker.fingerprint(of: completedDirectory) else {
+                throw ModelValidationError.missingModelArtifacts
+            }
+            ModelIntegrityChecker.store(fingerprint: fingerprint, forKey: kWhisperFingerprintKey)
             whisperProgress = 1.0
             isWhisperReady = true
             UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
@@ -473,6 +591,35 @@ final class ModelDownloadManager {
         } catch {
             guard downloadRunID == runID else { return }
             downloadError = downloadErrorMessage(error, for: "Speech Recognition")
+        }
+    }
+
+    private func validateLocalWhisperDirectory(_ directory: URL, runID: UUID) async -> Bool {
+        do {
+            let config = WhisperKitConfig(
+                modelFolder: directory.path,
+                computeOptions: TranscriptionService.whisperComputeOptions(),
+                load: false
+            )
+            let kit = try await WhisperKit(config)
+            guard downloadRunID == runID, !Task.isCancelled else {
+                await kit.unloadModels()
+                return false
+            }
+            try await kit.prewarmModels()
+            await kit.unloadModels()
+            guard downloadRunID == runID,
+                  !Task.isCancelled,
+                  let fingerprint = ModelIntegrityChecker.fingerprint(of: directory) else {
+                return false
+            }
+            ModelIntegrityChecker.store(fingerprint: fingerprint, forKey: kWhisperFingerprintKey)
+            whisperProgress = 1
+            isWhisperReady = true
+            UserDefaults.standard.set(true, forKey: kWhisperReadyKey)
+            return true
+        } catch {
+            return false
         }
     }
 
@@ -531,10 +678,44 @@ final class ModelDownloadManager {
 
             let service: LLMService
             if let dir = prefetchedDirectory {
-                // Files already on disk — skip straight to weight deserialization.
-                // No network I/O means no download stall is possible; skip the watchdog
-                // so the loading phase can take as long as the device needs.
-                service = try await LLMService.makeFromDirectory(dir)
+                // Files already on disk — try weight deserialization first. If the snapshot
+                // is incomplete (force-quit mid-download), fall through to a resumable
+                // network load instead of looping forever on the partial cache.
+                do {
+                    service = try await LLMService.makeFromDirectory(dir)
+                } catch {
+                    guard !(error is CancellationError),
+                          downloadRunID == runID,
+                          !Task.isCancelled else { throw error }
+                    service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
+                        group.addTask {
+                            return try await LLMService.make(progressHandler: progressHandler)
+                        }
+                        group.addTask { [weak self] in
+                            var lastSeen: Double = -1
+                            var stalledSeconds: TimeInterval = 0
+                            while !Task.isCancelled {
+                                try? await Task.sleep(for: .seconds(15))
+                                guard !Task.isCancelled else { return nil }
+                                let weakSelf = self
+                                let current: Double = await MainActor.run { weakSelf?.llmProgress ?? 0 }
+                                if current >= 0.95 { return nil }
+                                if current > lastSeen {
+                                    lastSeen = current
+                                    stalledSeconds = 0
+                                } else {
+                                    stalledSeconds += 15
+                                    if stalledSeconds >= 90 { throw URLError(.timedOut) }
+                                }
+                            }
+                            return nil
+                        }
+                        for try await result in group {
+                            if let service = result { return service }
+                        }
+                        throw URLError(.timedOut)
+                    }
+                }
             } else {
                 service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                     group.addTask {
@@ -681,11 +862,29 @@ final class ModelDownloadManager {
             return service
         } catch {
             llmLoadTask = nil
+            let integrityMatches = LLMService.localModelDirectory().map {
+                ModelIntegrityChecker.verify(directory: $0, storedKey: kLLMFingerprintKey)
+            } ?? false
+            if !(error is LLMLoadError),
+               ModelLoadFailurePolicy.shouldInvalidate(error, integrityMatches: integrityMatches) {
+                markLLMLoadFailure(error)
+            }
             throw error
         }
         #else
         throw URLError(.unsupportedURL)
         #endif
+    }
+
+    private func markLLMLoadFailure(_ error: Error) {
+        llmService = nil
+        isLLMReady = false
+        llmProgress = 0
+        validationCacheValid = false
+        UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+        ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
+        UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        downloadError = "Writing Assistant could not load: \(error.localizedDescription)"
     }
 
     func resetDownloads() {
@@ -730,5 +929,68 @@ enum LLMLoadError: LocalizedError {
         case .insufficientMemory:
             return "Not enough free memory to load the AI model. Close other apps, then try again."
         }
+    }
+}
+
+enum ModelValidationError: LocalizedError {
+    case missingModelArtifacts
+    case whisperLoadFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .missingModelArtifacts:
+            return "The model download did not finish writing all required files. Tap Retry to resume."
+        case .whisperLoadFailed:
+            return "The speech model could not load and needs to be repaired."
+        }
+    }
+}
+
+enum ModelLoadFailurePolicy {
+    static func shouldInvalidate(_ error: Error, integrityMatches: Bool) -> Bool {
+        guard !integrityMatches else { return false }
+        if error is CancellationError { return false }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
+            return false
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return shouldInvalidate(underlying, integrityMatches: integrityMatches)
+        }
+        return true
+    }
+}
+
+enum ModelInstallRetentionPolicy {
+    /// Keep installed model files across app updates. A missing or drifted fingerprint
+    /// is not enough to discard a previously completed install; only a missing directory
+    /// should force a fresh download. Partial caches (dir present, never marked ready,
+    /// no matching fingerprint) stay on disk for resume without being marked ready.
+    static func shouldKeepInstalledModel(
+        directoryExists: Bool,
+        integrityMatches: Bool,
+        wasMarkedReady: Bool
+    ) -> Bool {
+        guard directoryExists else { return false }
+        return integrityMatches || wasMarkedReady
+    }
+}
+
+enum LocalModelTrustPolicy {
+    /// Prefer local Hub snapshots whenever they exist. Incomplete snapshots fail local
+    /// load and fall through to resumable network download — they must not trigger a
+    /// delete/reinstall after an app update just because the fingerprint is missing.
+    static func shouldPreferNetworkResume(hasLocalDirectory: Bool) -> Bool {
+        !hasLocalDirectory
+    }
+}
+
+enum WhisperDownloadContinuation {
+    static func shouldContinueAfterLocalValidation(
+        validationSucceeded: Bool,
+        runStillActive: Bool,
+        isCancelled: Bool
+    ) -> Bool {
+        !validationSucceeded && runStillActive && !isCancelled
     }
 }

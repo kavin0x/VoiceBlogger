@@ -4,6 +4,30 @@ import MLXLLM
 import MLXLMCommon
 import HuggingFace
 
+enum LLMGenerationError: LocalizedError, Equatable {
+    case invalidPrompt
+    case emptyOutput
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPrompt:
+            return "The writing assistant could not prepare this transcript. Return to the transcript and try again."
+        case .emptyOutput:
+            return "The writing assistant finished without producing text. Tap Try Again."
+        }
+    }
+}
+
+enum LLMGenerationCompletion {
+    nonisolated static func validate(_ text: String) throws -> String {
+        let cleaned = GenerationOutputSanitizer.sanitize(text)
+        guard !cleaned.isEmpty else {
+            throw LLMGenerationError.emptyOutput
+        }
+        return cleaned
+    }
+}
+
 // ModelContainer is Sendable (final class ModelContainer: Sendable in mlx-swift-lm)
 private final class GenerationCancellationBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -50,7 +74,9 @@ final class LLMService: Sendable {
                 progressHandler?(progress)
             }
         )
-        return LLMService(container: c)
+        let service = LLMService(container: c)
+        try await service.validatePromptPipeline()
+        return service
     }
 
     // Resolve the local HuggingFace cache directory for the LLM without any network I/O.
@@ -128,7 +154,23 @@ final class LLMService: Sendable {
             from: directory,
             using: HuggingFaceTokenizerLoader()
         )
-        return LLMService(container: c)
+        let service = LLMService(container: c)
+        try await service.validatePromptPipeline()
+        return service
+    }
+
+    private func validatePromptPipeline() async throws {
+        try await container.perform { context in
+            let input = try await context.processor.prepare(
+                input: UserInput(messages: [
+                    ["role": "system", "content": "You are a writing assistant."],
+                    ["role": "user", "content": "Reply with one word."]
+                ])
+            )
+            guard input.text.tokens.size > 0 else {
+                throw LLMGenerationError.invalidPrompt
+            }
+        }
     }
 
     // Uses the mlx-swift-lm 3.x AsyncStream<Generation> API.
@@ -149,6 +191,9 @@ final class LLMService: Sendable {
                         let input = try await context.processor.prepare(
                             input: UserInput(messages: messages, additionalContext: ["enable_thinking": false])
                         )
+                        guard input.text.tokens.size > 0 else {
+                            throw LLMGenerationError.invalidPrompt
+                        }
                         var params = GenerateParameters()
                         params.temperature = temperature
                         params.topP = 0.92
@@ -232,14 +277,14 @@ final class LLMService: Sendable {
             try Task.checkCancellation()
             result += token
         }
-        return result
+        return try LLMGenerationCompletion.validate(result)
     }
 
     func polishTranscript(_ transcript: String) async throws -> String {
         let messages: [[String: String]] = [
             ["role": "system", "content": """
             Clean up a voice transcript. Remove filler words and false starts. Fix punctuation and paragraph breaks.
-            Do not add new facts. Return only the polished transcript.
+            Do not add new facts. Output ONLY the polished transcript — no preamble, reasoning, or labels.
             """],
             ["role": "user", "content": transcript]
         ]
