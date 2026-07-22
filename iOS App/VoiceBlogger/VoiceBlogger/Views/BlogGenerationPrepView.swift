@@ -83,17 +83,22 @@ struct BlogGenerationPrepView: View {
         post.title = ""
         try? modelContext.save()
 
-        prepStep = String(localized: "Unloading speech model…")
-        await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
+        if !downloadManager.hasLoadedLLMService {
+            prepStep = String(localized: "Unloading speech model…")
+            await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
 
-        prepStep = String(localized: "Loading writing assistant…")
-        do {
-            _ = try await downloadManager.loadedLLMService()
-        } catch {
-            self.error = String(
-                localized: "The writing assistant could not load: \(error.localizedDescription)"
-            )
-            return
+            prepStep = String(localized: "Loading writing assistant…")
+            do {
+                _ = try await downloadManager.loadedLLMService()
+            } catch {
+                self.error = String(
+                    localized: "The writing assistant could not load: \(error.localizedDescription)"
+                )
+                return
+            }
+        } else if downloadManager.hasLoadedWhisperKit {
+            // Polish may have loaded the LLM while Whisper was still warm from re-transcribe.
+            await downloadManager.prepareForLLMGenerationBarrier(releaseLLM: false)
         }
 
         appState.navigateTo(.generatingBlog(post: post))

@@ -589,4 +589,57 @@ struct VoiceBloggerTests {
         )
     }
 
+    @Test func inferencePerformancePolicySkipsRefinementForShortLiveRecordings() {
+        #expect(InferencePerformancePolicy.shouldSkipFullFileRefinement(
+            recordingDuration: 8,
+            previewText: "This is a complete short recording preview.",
+            hadLivePreview: true
+        ))
+    }
+
+    @Test func inferencePerformancePolicyKeepsRefinementForLongRecordings() {
+        #expect(!InferencePerformancePolicy.shouldSkipFullFileRefinement(
+            recordingDuration: 120,
+            previewText: "A longer meeting preview that still needs a full-file pass for accuracy.",
+            hadLivePreview: true
+        ))
+    }
+
+    @Test func inferencePerformancePolicyNeverSkipsWithoutLivePreview() {
+        #expect(!InferencePerformancePolicy.shouldSkipFullFileRefinement(
+            recordingDuration: 5,
+            previewText: "Imported audio without live preview.",
+            hadLivePreview: false
+        ))
+    }
+
+    @Test func inferencePerformancePolicyUsesVADForLongAudio() {
+        #expect(InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: 60) != .none)
+        #expect(InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: 20) == .none)
+    }
+
+    @Test func inferencePerformancePolicyParallelChunkWidthScalesWithRAM() {
+        #expect(InferencePerformancePolicy.parallelChunkSummaryWidth >= 1)
+        #expect(InferencePerformancePolicy.parallelChunkSummaryWidth <= 3)
+    }
+
+    @Test func speechGainControllerBoostsQuietPeaks() {
+        let controller = SpeechGainController()
+        let quietGain = controller.gain(forPeak: 0.02)
+        let loudGain = controller.gain(forPeak: 0.7)
+
+        #expect(quietGain > loudGain)
+        #expect(quietGain > 2.0)
+        #expect(loudGain <= 1.1)
+    }
+
+    @Test func speechGainControllerAppliesBoundedBoost() {
+        var samples: [Float] = [0.01, -0.008, 0.012, -0.009]
+        SpeechGainController.applyGain(5.0, to: &samples)
+
+        let peak = samples.map { abs($0) }.max() ?? 0
+        #expect(peak > 0.04)
+        #expect(peak <= 1.0)
+    }
+
 }

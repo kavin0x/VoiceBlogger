@@ -45,30 +45,12 @@ final class TranscriptionService: @unchecked Sendable {
         }
         // Pass modelFolder when files are on disk so WhisperKit skips all network calls.
         let localDir = localWhisperModelDirectory()
-        let config = WhisperKitConfig(
-            model: localDir == nil ? ModelIDs.whisper : nil,
-            modelFolder: localDir?.path,
-            computeOptions: whisperComputeOptions()
-        )
-        let kit = try await WhisperKit(config)
+        let kit = try await WhisperKitLoader.make(from: localDir)
         return TranscriptionService(whisperKit: kit)
     }
 
-    // Choose compute backend based on available RAM.
-    // On constrained devices, ANE is still preferred for the audio encoder (fastest path)
-    // but if RAM is critically low we drop to CPU-only so CoreML doesn't compete with
-    // MLX's Metal allocator for the limited GPU shared memory.
     static func whisperComputeOptions() -> ModelComputeOptions {
-        if hasAvailableMemory(requiredMB: 600) {
-            return ModelComputeOptions(
-                audioEncoderCompute: .cpuAndNeuralEngine,
-                textDecoderCompute: .cpuAndNeuralEngine
-            )
-        }
-        return ModelComputeOptions(
-            audioEncoderCompute: .cpuOnly,
-            textDecoderCompute: .cpuOnly
-        )
+        InferencePerformancePolicy.whisperComputeOptions()
     }
 
     private static func localWhisperModelDirectory() -> URL? {
@@ -127,11 +109,13 @@ final class TranscriptionService: @unchecked Sendable {
 
         let suppressTokens = Self.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
         let promptTokens = Self.musicAwarePromptTokens(for: whisperKit.tokenizer)
+        let audioDuration = Self.audioDurationSeconds(at: audioURL)
         let options = Self.decodingOptions(
             for: mode,
             suppressTokens: suppressTokens,
             promptTokens: promptTokens,
-            livePreview: false
+            livePreview: false,
+            audioDuration: audioDuration
         )
 
         let previousStateCallback = whisperKit.transcriptionStateCallback
@@ -209,8 +193,15 @@ final class TranscriptionService: @unchecked Sendable {
         for mode: TranscriptionMode,
         suppressTokens: [Int],
         promptTokens: [Int]? = nil,
-        livePreview: Bool
+        livePreview: Bool,
+        audioDuration: TimeInterval? = nil
     ) -> DecodingOptions {
+        let fallbackCount = InferencePerformancePolicy.whisperTemperatureFallbackCount(livePreview: livePreview)
+        let workers = InferencePerformancePolicy.whisperConcurrentWorkers(livePreview: livePreview)
+        let chunking = audioDuration.map {
+            InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: $0)
+        } ?? .none
+
         switch mode {
         case .transcribe(let language):
             return DecodingOptions(
@@ -218,7 +209,7 @@ final class TranscriptionService: @unchecked Sendable {
                 language: language,
                 temperature: 0.0,
                 temperatureIncrementOnFallback: 0.2,
-                temperatureFallbackCount: 5,
+                temperatureFallbackCount: fallbackCount,
                 usePrefillPrompt: language != nil,
                 detectLanguage: language == nil,
                 withoutTimestamps: true,
@@ -228,15 +219,16 @@ final class TranscriptionService: @unchecked Sendable {
                 suppressTokens: suppressTokens,
                 compressionRatioThreshold: 2.4,
                 logProbThreshold: -1.0,
-                noSpeechThreshold: 0.45,
-                chunkingStrategy: ChunkingStrategy.none
+                noSpeechThreshold: 0.35,
+                concurrentWorkerCount: workers,
+                chunkingStrategy: chunking
             )
         case .translate:
             return DecodingOptions(
                 task: .translate,
                 temperature: 0.0,
                 temperatureIncrementOnFallback: 0.2,
-                temperatureFallbackCount: 5,
+                temperatureFallbackCount: fallbackCount,
                 usePrefillPrompt: true,
                 skipSpecialTokens: true,
                 withoutTimestamps: true,
@@ -246,10 +238,18 @@ final class TranscriptionService: @unchecked Sendable {
                 suppressTokens: suppressTokens,
                 compressionRatioThreshold: 2.4,
                 logProbThreshold: -1.0,
-                noSpeechThreshold: 0.45,
-                chunkingStrategy: ChunkingStrategy.none
+                noSpeechThreshold: 0.35,
+                concurrentWorkerCount: workers,
+                chunkingStrategy: chunking
             )
         }
+    }
+
+    nonisolated static func audioDurationSeconds(at url: URL) -> TimeInterval {
+        guard let file = try? AVAudioFile(forReading: url), file.processingFormat.sampleRate > 0 else {
+            return 0
+        }
+        return Double(file.length) / file.processingFormat.sampleRate
     }
 
     /// Live-chunk transcription uses the same quality settings as the full-file pass.
@@ -449,6 +449,116 @@ enum TranscriptionError: LocalizedError {
             return "No speech was detected in this recording. You can retry transcription or share the audio file."
         case .stalled:
             return "Transcription stopped making progress. Retry transcription or share the audio file."
+        }
+    }
+}
+
+// MARK: - Parallel WhisperKit loading
+
+/// WhisperKit loads MelSpectrogram, TextDecoder, and AudioEncoder one after another.
+/// On large models that roughly triples cold-load time. This subclass loads all three
+/// CoreML bundles concurrently (after compilation has been cached via prewarm).
+final class ParallelWhisperKit: WhisperKit {
+    private var coreMLComponentsReady: Bool {
+        [featureExtractor, audioEncoder, textDecoder].allSatisfy {
+            ($0 as? WhisperMLModel)?.model != nil
+        }
+    }
+
+    override func loadModels(prewarmMode: Bool = false) async throws {
+        if prewarmMode {
+            // Serialize compilation during download prewarm to cap peak memory.
+            try await super.loadModels(prewarmMode: true)
+            return
+        }
+
+        if coreMLComponentsReady, tokenizer != nil {
+            return
+        }
+
+        guard let path = modelFolder else {
+            throw WhisperError.modelsUnavailable("Model folder is not set.")
+        }
+
+        let logmelURL = ModelUtilities.detectModelURL(inFolder: path, named: "MelSpectrogram")
+        let encoderURL = ModelUtilities.detectModelURL(inFolder: path, named: "AudioEncoder")
+        let decoderURL = ModelUtilities.detectModelURL(inFolder: path, named: "TextDecoder")
+
+        for url in [logmelURL, encoderURL, decoderURL] {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw WhisperError.modelsUnavailable("Model file not found at \(url.path)")
+            }
+        }
+
+        let compute = modelCompute
+        let melModel = featureExtractor as? WhisperMLModel
+        let decoderModel = textDecoder as? WhisperMLModel
+        let encoderModel = audioEncoder as? WhisperMLModel
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            if let melModel, melModel.model == nil {
+                group.addTask {
+                    try await melModel.loadModel(
+                        at: logmelURL,
+                        computeUnits: compute.melCompute,
+                        prewarmMode: false
+                    )
+                }
+            }
+            if let decoderModel, decoderModel.model == nil {
+                group.addTask {
+                    try await decoderModel.loadModel(
+                        at: decoderURL,
+                        computeUnits: compute.textDecoderCompute,
+                        prewarmMode: false
+                    )
+                }
+            }
+            if let encoderModel, encoderModel.model == nil {
+                group.addTask {
+                    try await encoderModel.loadModel(
+                        at: encoderURL,
+                        computeUnits: compute.audioEncoderCompute,
+                        prewarmMode: false
+                    )
+                }
+            }
+            try await group.waitForAll()
+        }
+
+        try await loadTokenizerIfNeeded()
+    }
+}
+
+enum WhisperKitLoader {
+    /// Config that resolves paths on disk without eagerly loading weights during init.
+    static func localConfig(modelFolder: URL?) -> WhisperKitConfig {
+        #if DEBUG
+        WhisperKitConfig(
+            model: modelFolder == nil ? ModelIDs.whisper : nil,
+            modelFolder: modelFolder?.path,
+            computeOptions: TranscriptionService.whisperComputeOptions(),
+            verbose: true,
+            logLevel: .debug,
+            load: false
+        )
+        #else
+        WhisperKitConfig(
+            model: modelFolder == nil ? ModelIDs.whisper : nil,
+            modelFolder: modelFolder?.path,
+            computeOptions: TranscriptionService.whisperComputeOptions(),
+            verbose: false,
+            logLevel: .none,
+            load: false
+        )
+        #endif
+    }
+
+    static func make(from modelFolder: URL?) async throws -> ParallelWhisperKit {
+        try await ModelLoadDiagnostics.timed("WhisperKit load") {
+            let kit = try await ParallelWhisperKit(localConfig(modelFolder: modelFolder))
+            try await kit.loadModels()
+            return kit
         }
     }
 }

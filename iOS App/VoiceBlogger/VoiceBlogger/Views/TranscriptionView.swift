@@ -161,7 +161,9 @@ struct TranscriptionView: View {
             }
             .onAppear {
                 editableTranscript = post.transcript
-                downloadManager.warmLLMIfNeeded()
+                if post.transcriptionState == .complete {
+                    downloadManager.warmLLMIfNeeded()
+                }
                 if post.transcriptionState == .inProgress && !recorder.isFinalizingTranscript {
                     applyLiveTranscriptAndRefine()
                 }
@@ -188,7 +190,7 @@ struct TranscriptionView: View {
         }
     }
 
-    /// Applies live preview text, then always runs the authoritative full-file pass.
+    /// Applies live preview text, then runs the authoritative full-file pass when needed.
     private func applyLiveTranscriptAndRefine() {
         let previewText = recorder.liveTranscript.isEmpty ? post.transcript : recorder.liveTranscript
         guard !previewText.isEmpty else {
@@ -200,8 +202,20 @@ struct TranscriptionView: View {
         post.transcript = previewText
         editableTranscript = previewText
         post.detectedSpeakerCount = 1
+        let hadLivePreview = recorder.isLivePreview || !recorder.liveTranscript.isEmpty
         recorder.isLivePreview = false
         try? modelContext.save()
+
+        if InferencePerformancePolicy.shouldSkipFullFileRefinement(
+            recordingDuration: post.duration,
+            previewText: previewText,
+            hadLivePreview: hadLivePreview
+        ) {
+            post.transcriptionState = .complete
+            try? modelContext.save()
+            downloadManager.warmLLMIfNeeded()
+            return
+        }
         runTranscription(isRefinement: true)
     }
 
@@ -223,6 +237,7 @@ struct TranscriptionView: View {
 
         Task {
             do {
+                try await downloadManager.ensureWhisperWarm()
                 let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
                 let mode = TranscriptionSettings.transcriptionMode
                 let finalTranscript = try await service.transcribe(
@@ -254,6 +269,7 @@ struct TranscriptionView: View {
                 }
                 try? modelContext.save()
                 BackgroundTranscriptionScheduler.schedule(postID: post.id)
+                downloadManager.warmLLMIfNeeded()
             } catch {
                 guard transcriptionAttemptID == attemptID else { return }
                 transcriptionAttemptID = UUID()

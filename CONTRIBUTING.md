@@ -15,16 +15,22 @@ Development setup (Python)
 
 1. Create and activate a virtual environment:
 
-   python3 -m venv venv
-   source venv/bin/activate
+   ``` bash
+      python3 -m venv venv
+      source venv/bin/activate
+   ```
 
 2. Install Python dependencies:
 
-   pip install -r requirements.txt
+   ``` bash
+      pip install -r requirements.txt
+   ```
 
 3. Run or test the Python scripts (example):
 
-   python Transcribe_and_blog.py
+   ``` bash
+      python Transcribe_and_blog.py
+   ```
 
 iOS development
 ----------------

@@ -3,14 +3,21 @@ import SwiftUI
 
 struct AudioPlayerView: View {
     let audioURL: URL
-    @State private var player: AVPlayer?
+    @State private var audioPlayer: AVAudioPlayer?
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
-    @State private var timeObserver: Any?
+    @State private var playbackError: String?
+    @State private var timeTimer: Timer?
 
     var body: some View {
         VStack(spacing: 8) {
+            if let playbackError {
+                Text(playbackError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
             HStack(spacing: 16) {
                 Button {
                     togglePlayback()
@@ -20,6 +27,7 @@ struct AudioPlayerView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                .disabled(audioPlayer == nil)
 
                 Slider(
                     value: Binding(
@@ -27,10 +35,11 @@ struct AudioPlayerView: View {
                         set: { newValue in
                             let target = newValue * duration
                             currentTime = target
-                            player?.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+                            audioPlayer?.currentTime = target
                         }
                     )
                 )
+                .disabled(audioPlayer == nil)
 
                 Text("\(formatTime(currentTime)) / \(formatTime(duration))")
                     .font(.caption.monospacedDigit())
@@ -42,43 +51,61 @@ struct AudioPlayerView: View {
     }
 
     private func setupPlayer() {
-        let item = AVPlayerItem(url: audioURL)
-        let avPlayer = AVPlayer(playerItem: item)
-        player = avPlayer
-
-        Task {
-            if let loaded = try? await item.asset.load(.duration) {
-                await MainActor.run {
-                    duration = loaded.seconds.isFinite ? loaded.seconds : 0
-                }
-            }
-        }
-
-        timeObserver = avPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
-            queue: .main
-        ) { time in
-            currentTime = time.seconds
-            isPlaying = avPlayer.rate > 0
+        do {
+            try AudioSessionManager.activatePlayback()
+            let player = try AVAudioPlayer(contentsOf: audioURL)
+            player.prepareToPlay()
+            audioPlayer = player
+            duration = player.duration
+            playbackError = nil
+            startTimeUpdates()
+        } catch {
+            audioPlayer = nil
+            playbackError = "Could not load audio for playback."
         }
     }
 
     private func teardownPlayer() {
-        if let timeObserver, let player {
-            player.removeTimeObserver(timeObserver)
+        timeTimer?.invalidate()
+        timeTimer = nil
+        audioPlayer?.stop()
+        audioPlayer = nil
+        isPlaying = false
+    }
+
+    private func startTimeUpdates() {
+        timeTimer?.invalidate()
+        timeTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            guard let player = audioPlayer else { return }
+            currentTime = player.currentTime
+            isPlaying = player.isPlaying
+            if !player.isPlaying, player.currentTime >= player.duration - 0.05, player.duration > 0 {
+                player.currentTime = 0
+                currentTime = 0
+            }
         }
-        player?.pause()
-        player = nil
     }
 
     private func togglePlayback() {
-        guard let player else { return }
-        if isPlaying {
-            player.pause()
-        } else {
-            player.play()
+        guard let audioPlayer else { return }
+        do {
+            try AudioSessionManager.activatePlayback()
+            if audioPlayer.isPlaying {
+                audioPlayer.pause()
+            } else {
+                if audioPlayer.currentTime >= audioPlayer.duration - 0.05 {
+                    audioPlayer.currentTime = 0
+                }
+                guard audioPlayer.play() else {
+                    playbackError = "Playback could not start."
+                    return
+                }
+            }
+            isPlaying = audioPlayer.isPlaying
+            playbackError = nil
+        } catch {
+            playbackError = "Audio output is unavailable."
         }
-        isPlaying = player.rate > 0
     }
 
     private func formatTime(_ time: TimeInterval) -> String {

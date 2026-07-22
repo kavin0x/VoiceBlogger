@@ -39,24 +39,22 @@ final class AudioRecorder: NSObject {
     @ObservationIgnored nonisolated(unsafe) private var chunkTaskIndex: Int = 0
     @ObservationIgnored nonisolated(unsafe) private var chainedTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var latestAudioLevel: Float = -60
+    @ObservationIgnored nonisolated(unsafe) private var speechGainController = SpeechGainController()
 
     @ObservationIgnored private let sampleQueue = DispatchQueue(label: "com.voiceblogger.samplequeue", qos: .userInitiated)
     @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
     @ObservationIgnored private let liveActivity = LiveActivityCoordinator()
 
-    // Adaptive chunk advance by device tier; overlap reduces word cuts at boundaries.
     nonisolated private static var chunkAdvanceSamples: Int {
-        switch DeviceRAMTier.current {
-        case .ample: return 10 * 16_000
-        case .standard: return 15 * 16_000
-        case .constrained: return 20 * 16_000
-        }
+        InferencePerformancePolicy.liveChunkAdvanceSamples
     }
 
-    nonisolated private static let chunkOverlapSamples = Int(2.5 * 16_000)
+    nonisolated private static var chunkOverlapSamples: Int {
+        InferencePerformancePolicy.liveChunkOverlapSamples
+    }
 
     nonisolated private static var chunkWindowSamples: Int {
-        chunkAdvanceSamples + chunkOverlapSamples
+        InferencePerformancePolicy.liveChunkWindowSamples
     }
 
     override init() {
@@ -127,15 +125,16 @@ final class AudioRecorder: NSObject {
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+            Task.detached { AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
+        converter.sampleRateConverterQuality = .max
 
         let outputFile: AVAudioFile
         do {
             outputFile = try AVAudioFile(forWriting: outputURL, settings: targetFormat.settings)
         } catch {
-            Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+            Task.detached { AudioSessionManager.deactivate() }
             throw error
         }
 
@@ -143,6 +142,7 @@ final class AudioRecorder: NSObject {
         audioConverter = converter
         outputAudioFile = outputFile
         activeWhisperKit = whisperKit
+        speechGainController.reset()
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.processTapBuffer(buffer, targetFormat: targetFormat)
@@ -155,7 +155,7 @@ final class AudioRecorder: NSObject {
             inputNode.removeTap(onBus: 0)
             outputAudioFile = nil
             activeWhisperKit = nil
-            Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+            Task.detached { AudioSessionManager.deactivate() }
             throw error
         }
 
@@ -191,7 +191,7 @@ final class AudioRecorder: NSObject {
         latestAudioLevel = -60
         IntentStorage.clearRecordingActive()
         liveActivity.endRecording()
-        Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+        Task.detached { AudioSessionManager.deactivate() }
 
         let url = currentAudioURL
         currentAudioURL = nil
@@ -251,7 +251,7 @@ final class AudioRecorder: NSObject {
         isLivePreview = false
         IntentStorage.clearRecordingActive()
         liveActivity.endRecording()
-        Task.detached { try? AVAudioSession.sharedInstance().setActive(false) }
+        Task.detached { AudioSessionManager.deactivate() }
 
         if let url = urlToDelete {
             try? FileManager.default.removeItem(at: url)
@@ -291,10 +291,17 @@ final class AudioRecorder: NSObject {
         }
         guard conversionError == nil, convertedBuffer.frameLength > 0 else { return }
 
-        try? outputAudioFile?.write(from: convertedBuffer)
-
         guard let channelData = convertedBuffer.floatChannelData?[0] else { return }
         let frameCount = Int(convertedBuffer.frameLength)
+        var peak: Float = 0
+        for index in 0..<frameCount {
+            peak = max(peak, abs(channelData[index]))
+        }
+        let gain = speechGainController.gain(forPeak: peak)
+        SpeechGainController.applyGain(gain, to: convertedBuffer)
+
+        try? outputAudioFile?.write(from: convertedBuffer)
+
         let newSamples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
 
         // RMS -> dBFS for the waveform meter
@@ -382,14 +389,7 @@ final class AudioRecorder: NSObject {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
-                    let session = AVAudioSession.sharedInstance()
-                    try session.setCategory(
-                        .record,
-                        mode: .measurement,
-                        options: [.allowBluetoothHFP]
-                    )
-                    try session.setPreferredSampleRate(16_000)
-                    try session.setActive(true)
+                    try AudioSessionManager.activateRecording()
                     continuation.resume()
                 } catch {
                     continuation.resume(throwing: error)

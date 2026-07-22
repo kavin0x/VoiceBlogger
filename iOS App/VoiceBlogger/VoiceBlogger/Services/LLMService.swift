@@ -66,17 +66,19 @@ final class LLMService: Sendable {
     }
 
     static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
-        let c = try await LLMModelFactory.shared.loadContainer(
-            from: HubDownloader(),
-            using: HuggingFaceTokenizerLoader(),
-            configuration: ModelConfiguration(id: ModelIDs.llm),
-            progressHandler: { progress in
-                progressHandler?(progress)
-            }
-        )
-        let service = LLMService(container: c)
-        try await service.validatePromptPipeline()
-        return service
+        try await ModelLoadDiagnostics.timed("LLM load") {
+            let c = try await LLMModelFactory.shared.loadContainer(
+                from: HubDownloader(),
+                using: HuggingFaceTokenizerLoader(),
+                configuration: ModelConfiguration(id: ModelIDs.llm),
+                progressHandler: { progress in
+                    progressHandler?(progress)
+                }
+            )
+            let service = LLMService(container: c)
+            try await service.validatePromptPipeline()
+            return service
+        }
     }
 
     // Resolve the local HuggingFace cache directory for the LLM without any network I/O.
@@ -150,13 +152,15 @@ final class LLMService: Sendable {
     // Load from a directory that was already downloaded (e.g. by a prefetch task).
     // Skips network I/O — goes straight to weight deserialization.
     static func makeFromDirectory(_ directory: URL) async throws -> LLMService {
-        let c = try await LLMModelFactory.shared.loadContainer(
-            from: directory,
-            using: HuggingFaceTokenizerLoader()
-        )
-        let service = LLMService(container: c)
-        try await service.validatePromptPipeline()
-        return service
+        try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
+            let c = try await LLMModelFactory.shared.loadContainer(
+                from: directory,
+                using: HuggingFaceTokenizerLoader()
+            )
+            let service = LLMService(container: c)
+            try await service.validatePromptPipeline()
+            return service
+        }
     }
 
     private func validatePromptPipeline() async throws {
@@ -186,7 +190,6 @@ final class LLMService: Sendable {
             let cancellationBox = GenerationCancellationBox()
             let task = Task.detached(priority: .userInitiated) { [container] in
                 do {
-                    await Task.yield()
                     try await container.perform { context in
                         let input = try await context.processor.prepare(
                             input: UserInput(messages: messages, additionalContext: ["enable_thinking": false])
@@ -194,14 +197,10 @@ final class LLMService: Sendable {
                         guard input.text.tokens.size > 0 else {
                             throw LLMGenerationError.invalidPrompt
                         }
-                        var params = GenerateParameters()
-                        params.temperature = temperature
-                        params.topP = 0.92
-                        params.repetitionPenalty = 1.12
-                        params.repetitionContextSize = 128
-                        params.frequencyPenalty = 0.08
-                        params.frequencyContextSize = 160
-                        params.maxTokens = maxTokens
+                        let params = Self.optimizedGenerateParameters(
+                            maxTokens: maxTokens,
+                            temperature: temperature
+                        )
 
                         let iterator = try TokenIterator(
                             input: input,
@@ -259,6 +258,16 @@ final class LLMService: Sendable {
         }
     }
 
+    nonisolated private static func optimizedGenerateParameters(
+        maxTokens: Int,
+        temperature: Float
+    ) -> GenerateParameters {
+        InferencePerformancePolicy.llmGenerateParameters(
+            maxTokens: maxTokens,
+            temperature: temperature
+        )
+    }
+
     // Collects an entire generateStream call into a single String (no streaming to caller).
     // Used for intermediate chunk-summary passes in the chunked blog generation path.
     nonisolated private func collectStream(
@@ -312,7 +321,7 @@ final class LLMService: Sendable {
                     var summaries: [String] = []
                     summaries.reserveCapacity(chunks.count)
 
-                    if DeviceRAMTier.current == .ample && chunks.count > 1 {
+                    if InferencePerformancePolicy.parallelChunkSummaryWidth > 1 && chunks.count > 1 {
                         summaries = try await self.mapChunksParallel(chunks, vocabularyTerms: vocabularyTerms)
                     } else {
                         for (index, chunk) in chunks.enumerated() {
@@ -354,7 +363,7 @@ final class LLMService: Sendable {
 
     nonisolated private func mapChunksParallel(_ chunks: [String], vocabularyTerms: [String]) async throws -> [String] {
         var summaries = Array(repeating: "", count: chunks.count)
-        let width = 2
+        let width = InferencePerformancePolicy.parallelChunkSummaryWidth
         var index = 0
         while index < chunks.count {
             let end = min(index + width, chunks.count)
