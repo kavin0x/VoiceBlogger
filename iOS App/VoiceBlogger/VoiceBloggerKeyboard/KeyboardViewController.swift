@@ -29,7 +29,5 @@ final class KeyboardViewController: UIInputViewController {
         if let url = URL(string: "voiceblogger://intent/start") {
             extensionContext?.open(url, completionHandler: nil)
         }
-        textDocumentProxy.insertText("")
-        UIPasteboard.general.string = "Open Voice Blogger to finish dictation."
     }
 }

@@ -104,6 +104,10 @@ final class ModelDownloadManager {
         // Only scan disk once per session unless something changes.
         if validationCacheValid && allModelsReady { return }
 
+        // Rewrite an oversized quality choice before any directory is treated as loadable.
+        _ = ModelQualityLevel.current
+        discardModelsThisDeviceCannotRun()
+
         let whisperDir = Self.localWhisperModelDirectory()
         let whisperIntegrity = whisperDir.map {
             ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
@@ -187,6 +191,66 @@ final class ModelDownloadManager {
         }
 
         evaluatePendingModelUpdates()
+    }
+
+    /// Deletes model files this device cannot load. Leaving them on disk lets a later
+    /// directory scan open the 3B or large-v3 weights and jetsam the process.
+    private func discardModelsThisDeviceCannotRun() {
+        let tier = DeviceRAMTier.current
+        let fm = FileManager.default
+
+        if let installedWhisper = UserDefaults.standard.string(forKey: kInstalledWhisperModelIDKey),
+           !ModelQualityLevel.isSafeToLoad(whisperModelID: installedWhisper, on: tier) {
+            UserDefaults.standard.removeObject(forKey: kInstalledWhisperModelIDKey)
+            UserDefaults.standard.removeObject(forKey: kWhisperReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kWhisperFingerprintKey)
+            isWhisperReady = false
+            whisperProgress = 0
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        }
+
+        if let installedLLM = UserDefaults.standard.string(forKey: kInstalledLLMModelIDKey),
+           !ModelQualityLevel.isSafeToLoad(llmModelID: installedLLM, on: tier) {
+            UserDefaults.standard.removeObject(forKey: kInstalledLLMModelIDKey)
+            UserDefaults.standard.removeObject(forKey: kLLMReadyKey)
+            ModelIntegrityChecker.invalidate(forKey: kLLMFingerprintKey)
+            isLLMReady = false
+            llmProgress = 0
+            llmService = nil
+            UserDefaults.standard.set(true, forKey: kModelDownloadStartedKey)
+        }
+
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+            if let entries = try? fm.contentsOfDirectory(
+                at: whisperCacheDir,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for entry in entries where !ModelQualityLevel.isSafeToLoad(
+                    whisperModelID: entry.lastPathComponent,
+                    on: tier
+                ) {
+                    try? fm.removeItem(at: entry)
+                }
+            }
+        }
+
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let hub = caches.appendingPathComponent("huggingface/hub")
+            if let entries = try? fm.contentsOfDirectory(
+                at: hub,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) {
+                for entry in entries where entry.lastPathComponent.hasPrefix("models--") {
+                    let repo = String(entry.lastPathComponent.dropFirst("models--".count))
+                        .replacingOccurrences(of: "--", with: "/")
+                    guard !ModelQualityLevel.isSafeToLoad(llmModelID: repo, on: tier) else { continue }
+                    try? fm.removeItem(at: entry)
+                }
+            }
+        }
     }
 
     /// Detects when the app's configured model ID changed for a single domain while an older
@@ -379,6 +443,10 @@ final class ModelDownloadManager {
         ) else { return nil }
 
         for entry in entries where entry.lastPathComponent != ModelIDs.whisper {
+            guard ModelQualityLevel.isSafeToLoad(
+                whisperModelID: entry.lastPathComponent,
+                on: DeviceRAMTier.current
+            ) else { continue }
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             if isDir && directoryContainsFiles(entry) { return entry }
         }
@@ -391,6 +459,9 @@ final class ModelDownloadManager {
         let canonical = docs
             .appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
             .appendingPathComponent(ModelIDs.whisper)
+        guard ModelQualityLevel.isSafeToLoad(whisperModelID: ModelIDs.whisper, on: DeviceRAMTier.current) else {
+            return nil
+        }
         return directoryContainsFiles(canonical) ? canonical : nil
     }
 
@@ -436,8 +507,12 @@ final class ModelDownloadManager {
             guard !Task.isCancelled else { return }
             let kit: WhisperKit
             do {
+                try await self.ensureLoadHeadroom(
+                    requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
+                )
                 kit = try await WhisperKitLoader.make(from: localDir)
             } catch {
+                if error is LLMLoadError { return }
                 let integrityMatches = localDir.map {
                     ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
                 } ?? false
@@ -716,6 +791,13 @@ final class ModelDownloadManager {
             if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error { return isOfflineError(underlying) }
             return false
         }
+        func isCellularBlockedError(_ e: Error) -> Bool {
+            if e is DownloadBlockedOnCellularError { return true }
+            let ns = e as NSError
+            if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorDataNotAllowed { return true }
+            if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error { return isCellularBlockedError(underlying) }
+            return false
+        }
         func isOutOfSpaceError(_ e: Error) -> Bool {
             let ns = e as NSError
             if ns.domain == NSCocoaErrorDomain && ns.code == CocoaError.fileWriteOutOfSpace.rawValue { return true }
@@ -731,7 +813,10 @@ final class ModelDownloadManager {
         if isConnectionResetError(error) {
             return "Connection was interrupted mid-download. Tap Retry to resume."
         }
-        if isOfflineError(error) {
+        if isOfflineError(error) || isCellularBlockedError(error) {
+            if DownloadNetworkPolicy.wifiOnlyEnabled || isCellularBlockedError(error) {
+                return DownloadNetworkPolicy.blockedMessage
+            }
             return "No internet connection. Connect to Wi-Fi or cellular and tap Retry."
         }
         return "\(model): \(error.localizedDescription)"
@@ -740,6 +825,9 @@ final class ModelDownloadManager {
     private func downloadWhisper(runID: UUID, forceNewCatalogID: Bool = false) async {
         do {
             guard downloadRunID == runID, !Task.isCancelled else { return }
+            try await ensureLoadHeadroom(
+                requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
+            )
 
             let existingDir = forceNewCatalogID
                 ? Self.canonicalWhisperModelDirectory()
@@ -764,6 +852,10 @@ final class ModelDownloadManager {
             }
 
             if forceNewCatalogID || !existingDownloadIsComplete {
+                if await DownloadNetworkPolicy.blockedByWifiOnlySetting() {
+                    downloadError = DownloadNetworkPolicy.blockedMessage
+                    return
+                }
                 whisperProgress = 0.05
                 // Download model files with load: false — files land on disk without
                 // pulling CoreML weights into RAM. No progress callback is available here,
@@ -817,6 +909,9 @@ final class ModelDownloadManager {
                 }
             }
             defer { compileProgressTask.cancel() }
+            try await ensureLoadHeadroom(
+                requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
+            )
             try await compileKit.prewarmModels()
             compileProgressTask.cancel()
             await compileKit.unloadModels()
@@ -851,6 +946,9 @@ final class ModelDownloadManager {
                 await kit.unloadModels()
                 return false
             }
+            try await ensureLoadHeadroom(
+                requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
+            )
             try await kit.prewarmModels()
             await kit.unloadModels()
             guard downloadRunID == runID,
@@ -870,9 +968,9 @@ final class ModelDownloadManager {
     }
 
     private func downloadLLM(prefetchedDirectory: URL?, runID: UUID) async {
-        // MLX's Metal device constructor calls device.name.UTF8String in C++, which returns
-        // nullptr on the iOS 27 simulator, crashing the hardened libc++ string constructor.
-        // MLX requires real GPU hardware and is not supported on simulator.
+        // MLX's Metal device constructor calls device.name.UTF8String in C++.
+        // A NULL pointer aborts in libc++ with no Swift log. MLXMetalInstallStartupGuard
+        // runs first so that read is skipped. The simulator still has no usable GPU.
         #if targetEnvironment(simulator)
         guard downloadRunID == runID, !Task.isCancelled else { return }
         downloadError = "The AI Blog Generator requires a physical iPhone or iPad — the iOS Simulator is not supported."
@@ -880,15 +978,11 @@ final class ModelDownloadManager {
         do {
             guard downloadRunID == runID, !Task.isCancelled else { return }
 
-            // Before deserializing ~1 GB of weights, verify there is enough free RAM.
-            // If Whisper just unloaded, give the OS one reclaim cycle.
-            if !hasAvailableMemory(requiredMB: 600) {
-                if mlxWasInitializedThisSession { MLX.Memory.clearCache() }
-                try? await Task.sleep(for: .milliseconds(200))
-                if !hasAvailableMemory(requiredMB: 500) {
-                    throw LLMLoadError.insufficientMemory
-                }
-            }
+            // Headroom matches the selected model. A lower retry used to let the 3B
+            // weights start loading and jetsam the app with no exception log.
+            try await ensureLoadHeadroom(
+                requiredMB: ModelMemoryBudget.llmLoadMegabytes(for: ModelQualityLevel.current)
+            )
             guard downloadRunID == runID, !Task.isCancelled else { return }
 
             // If prefetchedDirectory is set, files are already on disk — skip straight to loading.
@@ -935,6 +1029,9 @@ final class ModelDownloadManager {
                           !Task.isCancelled else { throw error }
                     service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                         group.addTask {
+                            if await DownloadNetworkPolicy.blockedByWifiOnlySetting() {
+                                throw DownloadBlockedOnCellularError()
+                            }
                             return try await LLMService.make(progressHandler: progressHandler)
                         }
                         group.addTask { [weak self] in
@@ -965,6 +1062,9 @@ final class ModelDownloadManager {
             } else {
                 service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                     group.addTask {
+                        if await DownloadNetworkPolicy.blockedByWifiOnlySetting() {
+                            throw DownloadBlockedOnCellularError()
+                        }
                         return try await LLMService.make(progressHandler: progressHandler)
                     }
                     // Watchdog: throw URLError.timedOut if download progress hasn't advanced
@@ -1017,7 +1117,10 @@ final class ModelDownloadManager {
     }
 
     func loadedLLMService() async throws -> LLMService {
-        try await loadLLMService()
+        if whisperKit != nil || whisperWarmTask != nil {
+            await prepareForLLMGenerationBarrier(releaseLLM: false)
+        }
+        return try await loadLLMService()
     }
 
     func prepareForLLMGeneration(releaseLLM: Bool = false) async {
@@ -1064,6 +1167,20 @@ final class ModelDownloadManager {
         }
     }
 
+    /// One reclaim pass, then the original requirement again. Never a smaller one.
+    private func ensureLoadHeadroom(requiredMB: Int) async throws {
+        if ModelMemoryBudget.allowsLoad(availableBytes: availableMemoryBytes(), requiredMB: requiredMB) {
+            return
+        }
+        if mlxWasInitializedThisSession {
+            MLX.Memory.clearCache()
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        if !ModelMemoryBudget.allowsLoad(availableBytes: availableMemoryBytes(), requiredMB: requiredMB) {
+            throw LLMLoadError.insufficientMemory
+        }
+    }
+
     private func loadLLMService(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
         #if !targetEnvironment(simulator)
         if let llmService {
@@ -1075,19 +1192,11 @@ final class ModelDownloadManager {
         }
 
         // On RAM-constrained devices, give the OS time to reclaim pages after Whisper
-        // unloads before we begin pulling 1 GB of LLM weights into memory.
-        // If we still don't have enough headroom, throw a descriptive error rather
-        // than attempting to load and triggering a jetsam OOM kill.
-        if !hasAvailableMemory(requiredMB: 750) {
-            if mlxWasInitializedThisSession {
-                MLX.Memory.clearCache()
-            }
-            // Give the OS one more reclaim cycle before giving up.
-            try? await Task.sleep(for: .milliseconds(200))
-            if !hasAvailableMemory(requiredMB: 550) {
-                throw LLMLoadError.insufficientMemory
-            }
-        }
+        // unloads before pulling weights into memory. The requirement is not lowered:
+        // loading the 3B model with a few hundred MB free is a jetsam kill.
+        try await ensureLoadHeadroom(
+            requiredMB: ModelMemoryBudget.llmLoadMegabytes(for: ModelQualityLevel.current)
+        )
 
         let task = Task { [isLLMReady] in
             // When the model is already on disk, load from the local cache directory
@@ -1165,12 +1274,7 @@ final class ModelDownloadManager {
         whisperKit = nil
         releaseLLMService()
 
-        // Delete cached model files so stale/wrong-ID models don't block re-download
-        let fm = FileManager.default
-        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let hfDir = docs.appendingPathComponent("huggingface")
-            try? fm.removeItem(at: hfDir)
-        }
+        ModelCacheLocations.removeDownloadedModels()
     }
 }
 
@@ -1180,7 +1284,7 @@ enum LLMLoadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .insufficientMemory:
-            return "Not enough free memory to load the AI model. Close other apps, then try again."
+            return "Not enough free memory to load this model. Close other apps, then try again. On older iPhones, use Balanced or Compact instead of High Quality."
         }
     }
 }
@@ -1268,6 +1372,7 @@ enum ModelLoadFailurePolicy {
     static func shouldInvalidate(_ error: Error, integrityMatches: Bool) -> Bool {
         guard !integrityMatches else { return false }
         if error is CancellationError { return false }
+        if error is LLMLoadError { return false }
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled {
             return false

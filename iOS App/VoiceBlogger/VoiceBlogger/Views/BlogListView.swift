@@ -62,7 +62,9 @@ struct BlogListView: View {
 
     private func deleteFilteredPosts(offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(filteredPosts[index])
+            let post = filteredPosts[index]
+            RecordingStorage.deleteAudioFile(named: post.audioFilename)
+            modelContext.delete(post)
         }
         try? modelContext.save()
     }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct TranscriptionView: View {
     let post: BlogPost
@@ -7,9 +8,12 @@ struct TranscriptionView: View {
     @Environment(AudioRecorder.self) var recorder
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var isTranscribing = false
     @State private var isRefining = false
+    @State private var refinePreview = ""
+    @State private var transcriptWhenRefineStarted = ""
     @State private var error: String?
     @State private var editableTranscript = ""
     @State private var detectedLanguage: String?
@@ -34,10 +38,16 @@ struct TranscriptionView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Refining transcript…")
                                     .foregroundStyle(.secondary)
-                                Text("Preview shown below — final pass runs on the full recording.")
+                                Text("Preview shown below — final pass runs on the full recording. Edits in the transcript stay put.")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                             }
+                        }
+                        if !refinePreview.isEmpty {
+                            Text(refinePreview)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(6)
                         }
                     }
                 } else if let error {
@@ -177,6 +187,10 @@ struct TranscriptionView: View {
                 guard !isFinalizing, post.transcriptionState == .inProgress else { return }
                 applyLiveTranscriptAndRefine()
             }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                reloadTranscriptSavedInBackground()
+            }
             .sheet(isPresented: $showAudioShareSheet) {
                 if let audioURL = availableAudioURL {
                     ShareSheet(items: [audioURL])
@@ -187,6 +201,35 @@ struct TranscriptionView: View {
                     runTranscription(isRefinement: false)
                 }
             }
+        }
+    }
+
+    /// Picks up a transcript written by the background task into a different model context.
+    private func reloadTranscriptSavedInBackground() {
+        let postID = post.id
+        let backgroundContext = ModelContext(modelContext.container)
+        var descriptor = FetchDescriptor<BlogPost>(
+            predicate: #Predicate { item in
+                item.id == postID
+            }
+        )
+        descriptor.fetchLimit = 1
+        guard let saved = try? backgroundContext.fetch(descriptor).first else { return }
+        guard saved.transcriptionState == .complete, !saved.transcript.isEmpty else { return }
+        guard saved.transcript != post.transcript || isTranscribing || isRefining else { return }
+        post.transcript = saved.transcript
+        post.detectedSpeakerCount = saved.detectedSpeakerCount
+        post.transcriptionState = .complete
+        if editableTranscript == transcriptWhenRefineStarted || editableTranscript.isEmpty || isTranscribing || isRefining {
+            editableTranscript = saved.transcript
+        }
+        isTranscribing = false
+        isRefining = false
+        refinePreview = ""
+        try? modelContext.save()
+        if appState.copyTranscriptToClipboard {
+            UIPasteboard.general.string = post.transcript
+            appState.copyTranscriptToClipboard = false
         }
     }
 
@@ -226,6 +269,8 @@ struct TranscriptionView: View {
         }
         if isRefinement {
             isRefining = true
+            transcriptWhenRefineStarted = editableTranscript
+            refinePreview = ""
         } else {
             isTranscribing = true
         }
@@ -234,20 +279,23 @@ struct TranscriptionView: View {
         let refinementFallback = isRefinement ? post.transcript : nil
         let attemptID = UUID()
         transcriptionAttemptID = attemptID
+        BackgroundTranscriptionScheduler.schedule(postID: post.id)
 
-        Task {
+        let task = Task {
             do {
                 try await downloadManager.ensureWhisperWarm()
                 let service = try await TranscriptionService.make(reusing: downloadManager.whisperKit)
                 let mode = TranscriptionSettings.transcriptionMode
+                let vocabularyTerms = VocabularyStore.terms(from: modelContext)
                 let finalTranscript = try await service.transcribe(
                     audioURL: audioURL,
                     mode: mode,
+                    vocabularyTerms: vocabularyTerms,
                     onPartial: { partial in
                         Task { @MainActor in
                             guard transcriptionAttemptID == attemptID else { return }
                             if isRefinement {
-                                editableTranscript = partial
+                                refinePreview = partial
                             } else {
                                 post.transcript = partial
                                 editableTranscript = partial
@@ -256,10 +304,21 @@ struct TranscriptionView: View {
                     }
                 )
                 guard transcriptionAttemptID == attemptID else { return }
+                guard !Task.isCancelled else {
+                    isTranscribing = false
+                    isRefining = false
+                    refinePreview = ""
+                    return
+                }
                 transcriptionAttemptID = UUID()
-                // Keep Whisper warm until blog generation (deferred unload).
-                post.transcript = finalTranscript.displayText
-                editableTranscript = finalTranscript.displayText
+                let userEditedDuringRefine = isRefinement && editableTranscript != transcriptWhenRefineStarted
+                if userEditedDuringRefine {
+                    let kept = BlogGenerationHandoff.preparedTranscript(from: editableTranscript)
+                    post.transcript = kept
+                } else {
+                    post.transcript = finalTranscript.displayText
+                    editableTranscript = finalTranscript.displayText
+                }
                 post.detectedSpeakerCount = finalTranscript.detectedSpeakerCount
                 post.transcriptionState = .complete
                 self.error = nil
@@ -268,10 +327,28 @@ struct TranscriptionView: View {
                     detectedLanguage = lang
                 }
                 try? modelContext.save()
-                BackgroundTranscriptionScheduler.schedule(postID: post.id)
+                BackgroundTranscriptionScheduler.clearPending(postID: post.id)
+                if appState.copyTranscriptToClipboard {
+                    let textToCopy = userEditedDuringRefine ? post.transcript : finalTranscript.displayText
+                    if !textToCopy.isEmpty {
+                        UIPasteboard.general.string = textToCopy
+                    }
+                    appState.copyTranscriptToClipboard = false
+                }
                 downloadManager.warmLLMIfNeeded()
+            } catch is CancellationError {
+                isTranscribing = false
+                isRefining = false
+                refinePreview = ""
+                return
             } catch {
                 guard transcriptionAttemptID == attemptID else { return }
+                if Task.isCancelled {
+                    isTranscribing = false
+                    isRefining = false
+                    refinePreview = ""
+                    return
+                }
                 transcriptionAttemptID = UUID()
                 let candidate = isRefinement ? (refinementFallback ?? "") : editableTranscript
                 let hasUsableTranscript = !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -289,12 +366,19 @@ struct TranscriptionView: View {
                     }
                     self.error = nil
                     appState.dismissError()
+                    BackgroundTranscriptionScheduler.clearPending(postID: post.id)
                 }
                 try? modelContext.save()
+                if appState.copyTranscriptToClipboard, hasUsableTranscript {
+                    UIPasteboard.general.string = candidate
+                    appState.copyTranscriptToClipboard = false
+                }
             }
             isTranscribing = false
             isRefining = false
+            refinePreview = ""
         }
+        BackgroundTranscriptionScheduler.noteForegroundTask(task)
     }
 
     private func saveEditedTranscript() {

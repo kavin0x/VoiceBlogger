@@ -10,6 +10,7 @@ final class IntentFulfillment {
     private var recorder: AudioRecorder?
     private var downloadManager: ModelDownloadManager?
     private var modelContext: ModelContext?
+    private var intentChain: Task<Void, Never>?
 
     private init() {}
 
@@ -33,13 +34,34 @@ final class IntentFulfillment {
         guard onboardingComplete, isConfigured else { return }
         guard let appState, let recorder, let downloadManager, let modelContext else { return }
 
-        if IntentStorage.consumeStartRecordingPending() {
-            Task { await startRecording(appState: appState, recorder: recorder, downloadManager: downloadManager) }
+        if IntentStorage.consumeDictateToClipboardPending() {
+            appState.copyTranscriptToClipboard = true
         }
 
-        if IntentStorage.consumeStopRecordingPending() {
-            stopRecording(appState: appState, recorder: recorder, modelContext: modelContext)
+        let steps = RecordingIntentSequence.steps(
+            startPending: IntentStorage.consumeStartRecordingPending(),
+            stopPending: IntentStorage.consumeStopRecordingPending()
+        )
+        guard !steps.isEmpty else { return }
+
+        let previous = intentChain
+        let task = Task { @MainActor in
+            await previous?.value
+            for step in steps {
+                switch step {
+                case .start:
+                    await self.startRecording(
+                        appState: appState,
+                        recorder: recorder,
+                        downloadManager: downloadManager,
+                        modelContext: modelContext
+                    )
+                case .stop:
+                    self.stopRecording(appState: appState, recorder: recorder, modelContext: modelContext)
+                }
+            }
         }
+        intentChain = task
     }
 
     func handleStartRecording(onboardingComplete: Bool) {
@@ -63,19 +85,23 @@ final class IntentFulfillment {
     private func startRecording(
         appState: AppState,
         recorder: AudioRecorder,
-        downloadManager: ModelDownloadManager
+        downloadManager: ModelDownloadManager,
+        modelContext: ModelContext
     ) async {
         appState.navigateTo(.recording)
 
         if recorder.permissionDenied {
-            appState.showError("Microphone access is required to record. Enable it in Settings.")
+            appState.showError(AudioRecorderError.microphonePermissionDenied.localizedDescription)
             return
         }
         guard !recorder.isRecording else { return }
 
         do {
             // Start capturing audio immediately; Whisper can finish loading in parallel.
-            try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
+            try await recorder.startRecording(
+                whisperKit: downloadManager.whisperKit,
+                vocabularyTerms: VocabularyStore.terms(from: modelContext)
+            )
             if downloadManager.whisperKit == nil {
                 Task {
                     await downloadManager.warmWhisper()

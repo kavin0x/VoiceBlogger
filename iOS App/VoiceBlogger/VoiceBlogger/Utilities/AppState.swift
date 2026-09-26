@@ -13,6 +13,15 @@ enum AppStage: Equatable {
     case viewingLinkedIn(post: BlogPost)
     case history
 
+    var keepsWritingAssistantLoaded: Bool {
+        switch self {
+        case .preparingBlog, .generatingBlog, .viewingBlog, .viewingInstagram, .viewingLinkedIn:
+            return true
+        case .modelDownload, .recording, .transcribing, .history:
+            return false
+        }
+    }
+
     static func == (lhs: AppStage, rhs: AppStage) -> Bool {
         switch (lhs, rhs) {
         case (.modelDownload, .modelDownload): return true
@@ -41,6 +50,8 @@ final class AppState {
     var selectedTab: MainTab = .record
     var errorMessage: String?
     var showError = false
+    /// Set by Dictate to Clipboard. Transcription copies the finished transcript, then clears this.
+    var copyTranscriptToClipboard = false
     @ObservationIgnored var generationModelContext: ModelContext?
 
     func navigateTo(_ stage: AppStage) {

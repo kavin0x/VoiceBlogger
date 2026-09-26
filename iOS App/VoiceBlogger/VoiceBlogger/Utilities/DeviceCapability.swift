@@ -3,19 +3,38 @@ import os
 
 // Classifies device RAM tier so model loading can adapt cache limits and
 // compute backend choices without hard-coded device name lists.
-enum DeviceRAMTier {
-    case constrained   // < 3 GB physical RAM  (iPhone SE, older iPads)
-    case standard      // 3–5 GB              (iPhone 12/13/14, iPad base)
-    case ample         // > 5 GB              (iPhone 15 Pro/Max, M-chip iPads)
+//
+// Buckets use reported gibibytes (ProcessInfo.physicalMemory), which is lower
+// than the marketed gigabyte figure. A 6 GB iPhone typically reports ~5.5 GiB
+// and stays `.standard`. High Quality (3B) is limited to `.ample` (>= 7 GiB,
+// marketed 8 GB and up) because loading it on smaller phones is a jetsam kill.
+nonisolated enum DeviceRAMTier: Comparable, Sendable {
+    case constrained   // < 3 GiB reported   (2–3 GB marketed: iPhone SE, XR)
+    case standard      // 3–6 GiB reported   (4–6 GB marketed: iPhone 11–15)
+    case ample         // >= 7 GiB reported  (8 GB marketed and up)
 
-    static let current: DeviceRAMTier = {
-        let gb = physicalRAMBytes / (1024 * 1024 * 1024)
-        switch gb {
-        case ..<3:  return .constrained
-        case 3..<6: return .standard
-        default:    return .ample
+    static let current: DeviceRAMTier = tier(forPhysicalRAMBytes: physicalRAMBytes)
+
+    static func tier(forPhysicalRAMBytes bytes: UInt64) -> DeviceRAMTier {
+        let gib = bytes / (1024 * 1024 * 1024)
+        switch gib {
+        case ..<3: return .constrained
+        case 3..<7: return .standard
+        default: return .ample
         }
-    }()
+    }
+
+    private var sortOrder: Int {
+        switch self {
+        case .constrained: return 0
+        case .standard: return 1
+        case .ample: return 2
+        }
+    }
+
+    static func < (lhs: DeviceRAMTier, rhs: DeviceRAMTier) -> Bool {
+        lhs.sortOrder < rhs.sortOrder
+    }
 
     private static var physicalRAMBytes: UInt64 {
         ProcessInfo.processInfo.physicalMemory

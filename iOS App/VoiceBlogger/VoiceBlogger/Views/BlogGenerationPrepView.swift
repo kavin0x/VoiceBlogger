@@ -81,7 +81,13 @@ struct BlogGenerationPrepView: View {
         post.transcriptionState = .complete
         post.blogContent = ""
         post.title = ""
-        try? modelContext.save()
+        let contextToSave = post.modelContext ?? appState.generationModelContext
+        do {
+            try contextToSave?.save()
+        } catch {
+            self.error = "Could not save the transcript before generation. Open History and try again."
+            return
+        }
 
         if !downloadManager.hasLoadedLLMService {
             prepStep = String(localized: "Unloading speech model…")

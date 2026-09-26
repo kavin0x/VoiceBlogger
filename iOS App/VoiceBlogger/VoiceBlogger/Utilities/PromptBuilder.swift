@@ -69,15 +69,33 @@ enum PromptBuilder {
     }
 
     nonisolated static func splitIntoChunks(_ transcript: String) -> [String] {
-        guard needsChunking(transcript) else { return [transcript] }
+        splitTranscript(
+            transcript,
+            chunkSize: chunkSize,
+            overlap: chunkOverlap,
+            threshold: maxTranscriptCharacters
+        )
+    }
 
-        let paragraphs = transcript.components(separatedBy: "\n\n")
+    /// `overlap` characters from the end of each chunk are repeated at the start of the next
+    /// so a sentence that straddles the cut is still visible to the following summary.
+    nonisolated static func splitTranscript(
+        _ transcript: String,
+        chunkSize: Int,
+        overlap: Int,
+        threshold: Int
+    ) -> [String] {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard chunkSize > 0, trimmed.count > threshold else { return trimmed.isEmpty ? [] : [trimmed] }
+
+        let paragraphs = trimmed.components(separatedBy: "\n\n")
         var chunks: [String] = []
         var current = ""
 
-        func flush() {
-            let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { chunks.append(trimmed) }
+        func commitCurrent() {
+            let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !value.isEmpty else { return }
+            chunks.append(value)
             current = ""
         }
 
@@ -85,41 +103,134 @@ enum PromptBuilder {
             let piece = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !piece.isEmpty else { continue }
 
+            if piece.count > chunkSize {
+                commitCurrent()
+                chunks.append(contentsOf: splitOversizedParagraph(piece, chunkSize: chunkSize))
+                continue
+            }
+
             if current.isEmpty {
                 current = piece
             } else if current.count + piece.count + 2 <= chunkSize {
                 current += "\n\n" + piece
             } else {
-                flush()
-                if piece.count <= chunkSize {
-                    current = piece
-                } else {
-                    // Fall back to sentence boundaries within oversized paragraphs.
-                    chunks.append(contentsOf: splitOversizedParagraph(piece))
-                }
+                commitCurrent()
+                current = piece
             }
         }
-        flush()
-        return chunks.isEmpty ? [transcript] : chunks
+        commitCurrent()
+        let base = chunks.isEmpty ? [trimmed] : chunks
+        return applyOverlap(base, overlap: overlap)
     }
 
-    nonisolated private static func splitOversizedParagraph(_ text: String) -> [String] {
-        let sentences = text.split(whereSeparator: { ".!?".contains($0) })
+    /// Keeps the terminator. A period between digits (3.14) is not a sentence break.
+    nonisolated static func sentenceSpans(in text: String) -> [String] {
+        var spans: [String] = []
+        var start = text.startIndex
+        var index = text.startIndex
+
+        while index < text.endIndex {
+            let character = text[index]
+            let next = text.index(after: index)
+            if character == "!" || character == "?" || character == "." {
+                let previous: Character? = index > text.startIndex ? text[text.index(before: index)] : nil
+                let following: Character? = next < text.endIndex ? text[next] : nil
+                let decimalPoint = character == "." && previous?.isNumber == true && following?.isNumber == true
+                let boundary = !decimalPoint && (following == nil || following?.isWhitespace == true || following == "\"" || following == "”")
+                if boundary {
+                    let span = String(text[start..<next]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !span.isEmpty { spans.append(span) }
+                    start = next
+                    while start < text.endIndex, text[start].isWhitespace {
+                        start = text.index(after: start)
+                    }
+                    index = start
+                    continue
+                }
+            }
+            index = next
+        }
+
+        if start < text.endIndex {
+            let rest = String(text[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !rest.isEmpty { spans.append(rest) }
+        }
+        return spans
+    }
+
+    nonisolated static func splitOversizedParagraph(_ text: String, chunkSize: Int) -> [String] {
+        let sentences = sentenceSpans(in: text)
+        guard !sentences.isEmpty else { return [text] }
         var chunks: [String] = []
         var current = ""
         for sentence in sentences {
-            let s = String(sentence).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !s.isEmpty else { continue }
-            let candidate = current.isEmpty ? s : current + ". " + s
+            if sentence.count > chunkSize {
+                if !current.isEmpty {
+                    chunks.append(current)
+                    current = ""
+                }
+                chunks.append(contentsOf: hardWrap(sentence, chunkSize: chunkSize))
+                continue
+            }
+            let candidate = current.isEmpty ? sentence : current + " " + sentence
             if candidate.count <= chunkSize {
                 current = candidate
             } else {
                 if !current.isEmpty { chunks.append(current) }
-                current = s
+                current = sentence
             }
         }
         if !current.isEmpty { chunks.append(current) }
         return chunks
+    }
+
+    nonisolated static func applyOverlap(_ chunks: [String], overlap: Int) -> [String] {
+        guard overlap > 0, chunks.count > 1 else { return chunks }
+        var result = [chunks[0]]
+        for index in 1..<chunks.count {
+            let prefix = overlapTail(chunks[index - 1], overlap: overlap)
+            let next = chunks[index]
+            if prefix.isEmpty || next.hasPrefix(prefix) {
+                result.append(next)
+            } else {
+                result.append(prefix + "\n\n" + next)
+            }
+        }
+        return result
+    }
+
+    nonisolated static func overlapTail(_ text: String, overlap: Int) -> String {
+        guard overlap > 0 else { return "" }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        guard trimmed.count > overlap else { return trimmed }
+        let start = trimmed.index(trimmed.endIndex, offsetBy: -overlap)
+        var tail = String(trimmed[start...])
+        if let space = tail.firstIndex(where: { $0.isWhitespace }) {
+            let after = tail.index(after: space)
+            if after < tail.endIndex {
+                tail = String(tail[after...])
+            }
+        }
+        return tail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func hardWrap(_ text: String, chunkSize: Int) -> [String] {
+        guard chunkSize > 0 else { return [text] }
+        var chunks: [String] = []
+        var current = ""
+        for word in text.split(separator: " ", omittingEmptySubsequences: true) {
+            let piece = String(word)
+            let candidate = current.isEmpty ? piece : current + " " + piece
+            if candidate.count <= chunkSize || current.isEmpty {
+                current = candidate
+            } else {
+                chunks.append(current)
+                current = piece
+            }
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks.isEmpty ? [text] : chunks
     }
 
     nonisolated static func chunkSummaryMessages(
@@ -152,7 +263,8 @@ enum PromptBuilder {
     nonisolated static func synthesisMessages(
         from summaries: [String],
         contentKind: GeneratedContentKind,
-        isSpeakerAnnotated: Bool = false
+        isSpeakerAnnotated: Bool = false,
+        vocabularyTerms: [String] = []
     ) -> [[String: String]] {
         let numbered = summaries.enumerated()
             .map { "[\($0.offset + 1)]\n\($0.element)" }
@@ -160,7 +272,7 @@ enum PromptBuilder {
         let system = systemPrompt(for: contentKind, isSpeakerAnnotated: isSpeakerAnnotated)
         let user = """
         Create \(contentKind.displayName.lowercased()) from these key points extracted from a voice recording.
-        Reply with ONLY the finished \(contentKind.displayName.lowercased()) — no preamble or reasoning.
+        Reply with ONLY the finished \(contentKind.displayName.lowercased()) — no preamble or reasoning.\(spellingReferenceBlock(vocabularyTerms))
 
         \(numbered)
         """

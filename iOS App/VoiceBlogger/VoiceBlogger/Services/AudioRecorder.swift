@@ -19,12 +19,15 @@ final class AudioRecorder: NSObject {
     var isFinalizingTranscript: Bool = false
     /// True when live text is a preview; a full-file pass will refine it.
     var isLivePreview: Bool = false
+    /// Called when a phone call or a failed write ends the take. Return true after a BlogPost is saved.
+    var onInterruptedRecording: ((InterruptedRecordingTake) -> Bool)?
+    var onRecordingWriteFailed: (() -> Void)?
 
     private var audioEngine: AVAudioEngine?
     private var levelTimer: Timer?
     private var durationTimer: Timer?
     private var recordingStartTime: Date?
-    private var hasUnclaimedInterruptedRecording = false
+    private var didFinalizeTake = false
 
     // All nonisolated(unsafe) properties below are accessed exclusively from
     // sampleQueue (a serial DispatchQueue), except:
@@ -40,10 +43,12 @@ final class AudioRecorder: NSObject {
     @ObservationIgnored nonisolated(unsafe) private var chainedTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var latestAudioLevel: Float = -60
     @ObservationIgnored nonisolated(unsafe) private var speechGainController = SpeechGainController()
+    @ObservationIgnored nonisolated(unsafe) private var vocabularyTermsForPrompt: [String] = []
+    @ObservationIgnored nonisolated(unsafe) private var didReportWriteFailure = false
 
     @ObservationIgnored private let sampleQueue = DispatchQueue(label: "com.voiceblogger.samplequeue", qos: .userInitiated)
     @ObservationIgnored nonisolated(unsafe) private var notificationObservers: [NSObjectProtocol] = []
-    @ObservationIgnored private let liveActivity = LiveActivityCoordinator()
+    @ObservationIgnored private let liveActivity: LiveActivityCoordinator
 
     nonisolated private static var chunkAdvanceSamples: Int {
         InferencePerformancePolicy.liveChunkAdvanceSamples
@@ -57,7 +62,8 @@ final class AudioRecorder: NSObject {
         InferencePerformancePolicy.liveChunkWindowSamples
     }
 
-    override init() {
+    init(liveActivity: LiveActivityCoordinator = LiveActivityCoordinator()) {
+        self.liveActivity = liveActivity
         super.init()
         let status = AVAudioApplication.shared.recordPermission
         permissionGranted = status == .granted
@@ -75,18 +81,16 @@ final class AudioRecorder: NSObject {
         permissionDenied = !granted
     }
 
-    func startRecording(whisperKit: WhisperKit? = nil) async throws {
+    func startRecording(whisperKit: WhisperKit? = nil, vocabularyTerms: [String] = []) async throws {
         if !permissionGranted {
             await requestPermission()
         }
-        guard permissionGranted else { return }
-
-        // Discard any leftover file from an interrupted recording
-        if hasUnclaimedInterruptedRecording, let old = currentAudioURL {
-            try? FileManager.default.removeItem(at: old)
-            currentAudioURL = nil
-            hasUnclaimedInterruptedRecording = false
+        guard permissionGranted else {
+            throw AudioRecorderError.microphonePermissionDenied
         }
+        updateVocabularyTerms(vocabularyTerms)
+        didReportWriteFailure = false
+        didFinalizeTake = false
 
         // Reset live transcription state and drain any in-flight sampleQueue work
         liveTranscript = ""
@@ -101,11 +105,7 @@ final class AudioRecorder: NSObject {
         }
 
         let recordingsDir = URL.recordingsDirectory
-        try FileManager.default.createDirectory(
-            at: recordingsDir,
-            withIntermediateDirectories: true,
-            attributes: [.protectionKey: FileProtectionType.complete]
-        )
+        try RecordingStorage.prepareDirectory(recordingsDir)
         let outputURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".caf")
 
         // 16kHz mono float32 — WhisperKit's native format; no second conversion needed
@@ -133,6 +133,7 @@ final class AudioRecorder: NSObject {
         let outputFile: AVAudioFile
         do {
             outputFile = try AVAudioFile(forWriting: outputURL, settings: targetFormat.settings)
+            RecordingStorage.protect(outputURL)
         } catch {
             Task.detached { AudioSessionManager.deactivate() }
             throw error
@@ -177,6 +178,8 @@ final class AudioRecorder: NSObject {
     }
 
     func stopRecording() -> URL? {
+        guard !didFinalizeTake else { return nil }
+        didFinalizeTake = true
         stopTimers()
         let engine = audioEngine
         audioEngine = nil
@@ -186,21 +189,17 @@ final class AudioRecorder: NSObject {
         outputAudioFile = nil
 
         isRecording = false
-        hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
         latestAudioLevel = -60
         IntentStorage.clearRecordingActive()
-        liveActivity.endRecording()
+        liveActivity.endRecording(saved: true)
         Task.detached { AudioSessionManager.deactivate() }
 
         let url = currentAudioURL
         currentAudioURL = nil
 
         if let url {
-            try? FileManager.default.setAttributes(
-                [.protectionKey: FileProtectionType.complete],
-                ofItemAtPath: url.path
-            )
+            RecordingStorage.protect(url)
         }
 
         // Optimistically mark as finalizing if WhisperKit is active.
@@ -220,7 +219,14 @@ final class AudioRecorder: NSObject {
             if !remaining.isEmpty, let whisperKit = wk {
                 let idx = self.chunkTaskIndex
                 self.chunkTaskIndex += 1
-                self.enqueueTranscription(samples: remaining, index: idx, isFinal: true, whisperKit: whisperKit)
+                let terms = self.vocabularyTermsForPrompt
+                self.enqueueTranscription(
+                    samples: remaining,
+                    index: idx,
+                    isFinal: true,
+                    whisperKit: whisperKit,
+                    vocabularyTerms: terms
+                )
             } else {
                 Task { @MainActor [weak self] in
                     self?.isFinalizingTranscript = false
@@ -232,6 +238,7 @@ final class AudioRecorder: NSObject {
     }
 
     func discardRecording() {
+        didFinalizeTake = true
         stopTimers()
         let engine = audioEngine
         audioEngine = nil
@@ -243,14 +250,13 @@ final class AudioRecorder: NSObject {
         isRecording = false
         currentAudioURL = nil
         duration = 0
-        hasUnclaimedInterruptedRecording = false
         audioLevels = Array(repeating: -60, count: 30)
         latestAudioLevel = -60
         isFinalizingTranscript = false
         liveTranscript = ""
         isLivePreview = false
         IntentStorage.clearRecordingActive()
-        liveActivity.endRecording()
+        liveActivity.endRecording(saved: false)
         Task.detached { AudioSessionManager.deactivate() }
 
         if let url = urlToDelete {
@@ -300,7 +306,13 @@ final class AudioRecorder: NSObject {
         let gain = speechGainController.gain(forPeak: peak)
         SpeechGainController.applyGain(gain, to: convertedBuffer)
 
-        try? outputAudioFile?.write(from: convertedBuffer)
+        if let outputAudioFile {
+            do {
+                try outputAudioFile.write(from: convertedBuffer)
+            } catch {
+                reportWriteFailure()
+            }
+        }
 
         let newSamples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
 
@@ -327,7 +339,14 @@ final class AudioRecorder: NSObject {
                 ) else { break }
                 let idx = self.chunkTaskIndex
                 self.chunkTaskIndex += 1
-                self.enqueueTranscription(samples: chunk, index: idx, isFinal: false, whisperKit: wk)
+                let terms = self.vocabularyTermsForPrompt
+                self.enqueueTranscription(
+                    samples: chunk,
+                    index: idx,
+                    isFinal: false,
+                    whisperKit: wk,
+                    vocabularyTerms: terms
+                )
             }
         }
     }
@@ -335,11 +354,76 @@ final class AudioRecorder: NSObject {
     // MARK: - Live Transcription
 
     // Must be called from sampleQueue so chainedTask reads/writes are serialized.
+    func updateVocabularyTerms(_ terms: [String]) {
+        let snapshot = terms
+        sampleQueue.sync {
+            vocabularyTermsForPrompt = snapshot
+        }
+    }
+
+    nonisolated private func reportWriteFailure() {
+        guard !didReportWriteFailure else { return }
+        didReportWriteFailure = true
+        Task { @MainActor [weak self] in
+            self?.finalizeOpenTake(becauseWriteFailed: true)
+        }
+    }
+
+    /// Stops the engine, keeps the audio file, and asks the app to insert a history row.
+    @discardableResult
+    private func finalizeOpenTake(becauseWriteFailed: Bool) -> Bool {
+        guard !didFinalizeTake else { return false }
+        guard isRecording || currentAudioURL != nil else { return false }
+        didFinalizeTake = true
+        stopTimers()
+        let engine = audioEngine
+        audioEngine = nil
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        outputAudioFile = nil
+
+        let filename = currentAudioURL?.lastPathComponent
+        let takeDuration = duration
+        let transcript = liveTranscript
+        isRecording = false
+        currentAudioURL = nil
+        audioLevels = Array(repeating: -60, count: 30)
+        latestAudioLevel = -60
+        isFinalizingTranscript = false
+        IntentStorage.clearRecordingActive()
+        Task.detached { AudioSessionManager.deactivate() }
+
+        sampleQueue.async { [weak self] in
+            guard let self else { return }
+            self.chainedTask?.cancel()
+            self.chainedTask = nil
+            self.activeWhisperKit = nil
+        }
+
+        let saved: Bool
+        if let filename {
+            let take = InterruptedRecordingTake(
+                filename: filename,
+                duration: takeDuration,
+                liveTranscript: transcript
+            )
+            saved = onInterruptedRecording?(take) ?? false
+        } else {
+            saved = false
+        }
+        liveActivity.endRecording(saved: saved)
+        if becauseWriteFailed {
+            onRecordingWriteFailed?()
+        }
+        return saved
+    }
+
     nonisolated private func enqueueTranscription(
         samples: [Float],
         index: Int,
         isFinal: Bool,
-        whisperKit: WhisperKit
+        whisperKit: WhisperKit,
+        vocabularyTerms: [String]
     ) {
         let previous = chainedTask
         chainedTask = Task {
@@ -351,7 +435,11 @@ final class AudioRecorder: NSObject {
                 }
                 return
             }
-            let text = await Self.transcribeChunk(samples, whisperKit: whisperKit)
+            let text = await Self.transcribeChunk(
+                samples,
+                whisperKit: whisperKit,
+                vocabularyTerms: vocabularyTerms
+            )
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if !text.isEmpty {
@@ -367,9 +455,16 @@ final class AudioRecorder: NSObject {
         }
     }
 
-    nonisolated private static func transcribeChunk(_ samples: [Float], whisperKit: WhisperKit) async -> String {
+    nonisolated private static func transcribeChunk(
+        _ samples: [Float],
+        whisperKit: WhisperKit,
+        vocabularyTerms: [String]
+    ) async -> String {
         let suppressTokens = TranscriptionService.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let promptTokens = TranscriptionService.musicAwarePromptTokens(for: whisperKit.tokenizer)
+        let promptTokens = TranscriptionService.musicAwarePromptTokens(
+            for: whisperKit.tokenizer,
+            vocabularyTerms: vocabularyTerms
+        )
         let options = TranscriptionService.liveChunkDecodingOptions(
             suppressTokens: suppressTokens,
             promptTokens: promptTokens
@@ -439,28 +534,7 @@ final class AudioRecorder: NSObject {
         switch type {
         case .began:
             guard isRecording else { return }
-            stopTimers()
-            let engine = audioEngine
-            audioEngine = nil
-            engine?.inputNode.removeTap(onBus: 0)
-            engine?.stop()
-            outputAudioFile = nil
-
-            isRecording = false
-            hasUnclaimedInterruptedRecording = currentAudioURL != nil
-            audioLevels = Array(repeating: -60, count: 30)
-            latestAudioLevel = -60
-            isFinalizingTranscript = false
-            // Preserve partial live transcript and audio file for recovery
-            IntentStorage.clearRecordingActive()
-            liveActivity.endRecording()
-
-            sampleQueue.async { [weak self] in
-                guard let self else { return }
-                self.chainedTask?.cancel()
-                self.chainedTask = nil
-                self.activeWhisperKit = nil
-            }
+            finalizeOpenTake(becauseWriteFailed: false)
 
         case .ended:
             // Don't auto-resume; let the user explicitly start a new recording
@@ -560,13 +634,22 @@ private final class SampleRingBuffer: @unchecked Sendable {
     }
 }
 
-private enum AudioRecorderError: LocalizedError {
+enum AudioRecorderError: LocalizedError {
     case recordingCouldNotStart
+    case microphonePermissionDenied
 
     var errorDescription: String? {
         switch self {
         case .recordingCouldNotStart:
             "The microphone could not start recording."
+        case .microphonePermissionDenied:
+            "Microphone access is required to record. Enable it in Settings."
         }
     }
+}
+
+struct InterruptedRecordingTake: Sendable {
+    let filename: String
+    let duration: TimeInterval
+    let liveTranscript: String
 }

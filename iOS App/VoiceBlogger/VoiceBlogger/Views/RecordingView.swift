@@ -150,12 +150,11 @@ struct RecordingView: View {
             }
             do {
                 // Start capturing audio immediately; Whisper can finish loading in parallel.
-                try await recorder.startRecording(whisperKit: downloadManager.whisperKit)
+                try await recorder.startRecording(
+                    whisperKit: downloadManager.whisperKit,
+                    vocabularyTerms: VocabularyStore.terms(from: modelContext)
+                )
                 HapticFeedback.recordToggle()
-                if recorder.permissionDenied {
-                    showPermissionAlert = true
-                    return
-                }
                 if downloadManager.whisperKit == nil {
                     Task {
                         await downloadManager.warmWhisper()
@@ -166,6 +165,8 @@ struct RecordingView: View {
                 } else {
                     recorder.attachWhisperKit(downloadManager.whisperKit)
                 }
+            } catch AudioRecorderError.microphonePermissionDenied {
+                showPermissionAlert = true
             } catch {
                 appState.showError("Recording failed: \(error.localizedDescription)")
                 if !downloadManager.isWhisperReady {
@@ -201,7 +202,7 @@ struct RecordingView: View {
         let recordingsDir = URL.recordingsDirectory
         Task.detached {
             do {
-                try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+                try RecordingStorage.prepareDirectory(recordingsDir)
                 let filename = UUID().uuidString + "." + url.pathExtension
                 let destURL = recordingsDir.appendingPathComponent(filename)
                 try FileManager.default.copyItem(at: url, to: destURL)

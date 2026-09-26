@@ -642,4 +642,278 @@ struct VoiceBloggerTests {
         #expect(peak <= 1.0)
     }
 
+    @Test func highQualityIsRejectedOnPhonesBelowEightGigabytes() {
+        let threeGB: UInt64 = 2_961_514_496
+        let fourGB: UInt64 = 3_840_000_000
+        let sixGBMarketed: UInt64 = 5_912_567_808
+        let sixGiB = UInt64(6) * 1024 * 1024 * 1024
+        let eightGB: UInt64 = 8_027_963_392
+
+        #expect(DeviceRAMTier.tier(forPhysicalRAMBytes: threeGB) == .constrained)
+        #expect(DeviceRAMTier.tier(forPhysicalRAMBytes: fourGB) == .standard)
+        #expect(DeviceRAMTier.tier(forPhysicalRAMBytes: sixGBMarketed) == .standard)
+        #expect(DeviceRAMTier.tier(forPhysicalRAMBytes: sixGiB) == .standard)
+        #expect(DeviceRAMTier.tier(forPhysicalRAMBytes: eightGB) == .ample)
+
+        #expect(!ModelQualityLevel.high.isSupported(on: .standard))
+        #expect(!ModelQualityLevel.high.isSupported(on: .constrained))
+        #expect(ModelQualityLevel.high.isSupported(on: .ample))
+        #expect(!ModelQualityLevel.medium.isSupported(on: .constrained))
+        #expect(ModelQualityLevel.low.isSupported(on: .constrained))
+
+        #expect(ModelQualityLevel.clamped(.high, to: .standard) == .medium)
+        #expect(ModelQualityLevel.clamped(.high, to: .constrained) == .low)
+        #expect(ModelQualityLevel.clamped(.medium, to: .constrained) == .low)
+        #expect(ModelQualityLevel.recommended(for: .standard) == .medium)
+        #expect(ModelQualityLevel.recommended(for: .constrained) == .low)
+        #expect(ModelQualityLevel.recommended(for: .ample) == .high)
+    }
+
+    @Test func storedHighQualityIsClampedBeforeItCanLoad() {
+        let clamped = ModelQualityResolution.decide(
+            ModelQualityResolution.Input(
+                tier: .standard,
+                storedRaw: ModelQualityLevel.high.rawValue,
+                isLocked: true,
+                whisperReady: true
+            )
+        )
+        #expect(clamped.level == .medium)
+        #expect(clamped.shouldPersist)
+
+        let kept = ModelQualityResolution.decide(
+            ModelQualityResolution.Input(
+                tier: .ample,
+                storedRaw: ModelQualityLevel.high.rawValue,
+                isLocked: false,
+                whisperReady: true
+            )
+        )
+        #expect(kept.level == .high)
+        #expect(kept.shouldPersist)
+    }
+
+    @Test func legacyInstallFallsBackWhenBalancedDoesNotFit() {
+        let standard = ModelQualityResolution.decide(
+            ModelQualityResolution.Input(tier: .standard, storedRaw: nil, isLocked: false, whisperReady: true)
+        )
+        #expect(standard.level == .medium)
+        #expect(standard.shouldPersist)
+
+        let constrained = ModelQualityResolution.decide(
+            ModelQualityResolution.Input(tier: .constrained, storedRaw: nil, isLocked: false, whisperReady: true)
+        )
+        #expect(constrained.level == .low)
+    }
+
+    @Test func oversizedInstalledModelsAreNotSafeToLoad() {
+        #expect(!ModelQualityLevel.isSafeToLoad(
+            whisperModelID: ModelQualityLevel.high.whisperModelID,
+            on: .standard
+        ))
+        #expect(!ModelQualityLevel.isSafeToLoad(
+            whisperModelID: "openai_whisper-large-v3",
+            on: .constrained
+        ))
+        #expect(!ModelQualityLevel.isSafeToLoad(
+            llmModelID: ModelQualityLevel.high.llmModelID,
+            on: .standard
+        ))
+        #expect(ModelQualityLevel.isSafeToLoad(
+            llmModelID: ModelQualityLevel.low.llmModelID,
+            on: .constrained
+        ))
+        #expect(ModelQualityLevel.isSafeToLoad(
+            whisperModelID: ModelQualityLevel.low.whisperModelID,
+            on: .constrained
+        ))
+    }
+
+    @Test func memoryBudgetStaysAtTheModelFootprint() {
+        let high = ModelMemoryBudget.llmLoadMegabytes(for: .high)
+        #expect(high >= 2000)
+        let oneByteShort = (UInt64(high) * 1024 * 1024) - 1
+        #expect(!ModelMemoryBudget.allowsLoad(availableBytes: oneByteShort, requiredMB: high))
+        #expect(ModelMemoryBudget.allowsLoad(availableBytes: UInt64(high) * 1024 * 1024, requiredMB: high))
+        #expect(ModelMemoryBudget.llmLoadMegabytes(for: .low) < high)
+        #expect(ModelMemoryBudget.whisperCompileMegabytes(for: .high) > ModelMemoryBudget.whisperCompileMegabytes(for: .low))
+        #expect(ModelMemoryBudget.allowsLoad(availableBytes: 0, requiredMB: high))
+    }
+
+    @Test func highQualityGenerationStaysInsideOneForwardPass() {
+        #expect(InferencePerformancePolicy.parallelChunkSummaryWidth(quality: .high, tier: .ample) == 1)
+        #expect(InferencePerformancePolicy.parallelChunkSummaryWidth(quality: .medium, tier: .ample) == 3)
+        #expect(InferencePerformancePolicy.parallelChunkSummaryWidth(quality: .low, tier: .constrained) == 1)
+
+        let highProfile = InferencePerformancePolicy.llmMemoryProfile(quality: .high, tier: .ample)
+        #expect(highProfile.quantizeKV)
+        #expect(highProfile.prefillStepSize == 512)
+        #expect(ModelQualityLevel.high.mlxCacheLimitBytes(on: .ample) == 512 * 1024 * 1024)
+
+        let balancedProfile = InferencePerformancePolicy.llmMemoryProfile(quality: .medium, tier: .ample)
+        #expect(!balancedProfile.quantizeKV)
+        #expect(balancedProfile.prefillStepSize == 1024)
+    }
+
+    @Test func memoryPressureDoesNotInvalidateAGoodModel() {
+        #expect(!ModelLoadFailurePolicy.shouldInvalidate(
+            LLMLoadError.insufficientMemory,
+            integrityMatches: false
+        ))
+    }
+
+    @Test func mlxStartupKeepsARealGPUArchitecture() {
+        #expect(MLXMetalStartup.resolvedArchitecture(reported: "applegpu_g16p", runningOnMac: false) == "applegpu_g16p")
+        #expect(MLXMetalStartup.resolvedArchitecture(reported: "applegpu_g14g", runningOnMac: true) == "applegpu_g14g")
+    }
+
+    @Test func mlxStartupReplacesAMissingGPUName() {
+        #expect(MLXMetalStartup.resolvedArchitecture(reported: nil, runningOnMac: false) == "applegpu_g15p")
+        #expect(MLXMetalStartup.resolvedArchitecture(reported: "", runningOnMac: false) == "applegpu_g15p")
+        #expect(MLXMetalStartup.resolvedArchitecture(reported: nil, runningOnMac: true) == "applegpu_g14g")
+        MLXMetalStartup.installIfNeeded()
+        let arch = getenv("MLX_METAL_GPU_ARCH").map { String(cString: $0) } ?? ""
+        #expect(!arch.isEmpty)
+    }
+
+    @Test func lockedRecordingUsesProtectionThatAllowsBackgroundWrites() {
+        #expect(RecordingStorage.protection == .completeUntilFirstUserAuthentication)
+    }
+
+    @Test func deletingHistoryRemovesTheAudioFile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voiceblogger-delete-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let filename = "take.caf"
+        let file = directory.appendingPathComponent(filename)
+        try Data("audio".utf8).write(to: file)
+        let outside = directory.deletingLastPathComponent()
+            .appendingPathComponent("vb-secret-\(UUID().uuidString).txt")
+        try Data("secret".utf8).write(to: outside)
+        defer { try? FileManager.default.removeItem(at: outside) }
+
+        RecordingStorage.deleteAudioFile(named: filename, in: directory)
+        RecordingStorage.deleteAudioFile(named: "../\(outside.lastPathComponent)", in: directory)
+
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+        #expect(FileManager.default.fileExists(atPath: outside.path))
+    }
+
+    @Test func resetRemovesSpeechAndWritingModelCaches() {
+        let documents = URL(fileURLWithPath: "/tmp/docs", isDirectory: true)
+        let caches = URL(fileURLWithPath: "/tmp/caches", isDirectory: true)
+        let urls = ModelCacheLocations.huggingFaceDirectories(documents: documents, caches: caches)
+        #expect(urls.contains(documents.appendingPathComponent("huggingface", isDirectory: true)))
+        #expect(urls.contains(caches.appendingPathComponent("huggingface", isDirectory: true)))
+    }
+
+    @Test func sameTurnStartAndStopKeepsStopAfterStart() {
+        #expect(RecordingIntentSequence.steps(startPending: true, stopPending: true) == [.start, .stop])
+        #expect(RecordingIntentSequence.steps(startPending: false, stopPending: true) == [.stop])
+        #expect(RecordingIntentSequence.steps(startPending: true, stopPending: false) == [.start])
+    }
+
+    @Test func emptyTranscriptionCallbacksStillCountAsProgress() {
+        #expect(TranscriptionStallPolicy.resetsTimer(callbackInvoked: true))
+        #expect(!TranscriptionStallPolicy.resetsTimer(callbackInvoked: false))
+    }
+
+    @Test func polishRejectsATruncatedLongTranscript() {
+        let original = String(repeating: "We shipped the beta after the review. ", count: 80)
+        let truncated = String(original.prefix(400))
+        #expect(TranscriptPolishPolicy.looksTruncated(original: original, polished: truncated, maxTokens: 800))
+        #expect(
+            TranscriptPolishPolicy.acceptedText(original: original, polished: truncated, maxTokens: 800) == original
+        )
+    }
+
+    @Test func polishKeepsALightlyCleanedTranscript() {
+        let original = "Um, we shipped the beta after the review, you know."
+        let polished = "We shipped the beta after the review."
+        #expect(!TranscriptPolishPolicy.looksTruncated(original: original, polished: polished, maxTokens: 800))
+        #expect(
+            TranscriptPolishPolicy.acceptedText(original: original, polished: polished, maxTokens: 800) == polished
+        )
+    }
+
+    @Test func chunkSplitKeepsDecimalsAndQuestionMarks() {
+        let sentences = PromptBuilder.sentenceSpans(in: "Pi is 3.14 today. Really? Yes.")
+        #expect(sentences == ["Pi is 3.14 today.", "Really?", "Yes."])
+
+        let chunks = PromptBuilder.splitTranscript(
+            "Pi is 3.14 today. Really? Yes, it is.",
+            chunkSize: 24,
+            overlap: 0,
+            threshold: 10
+        )
+        let joined = chunks.joined(separator: " ")
+        #expect(joined.contains("3.14"))
+        #expect(joined.contains("Really?"))
+        #expect(!joined.contains("3. 14"))
+        #expect(!joined.contains("Really."))
+    }
+
+    @Test func chunkSplitRepeatsTheDeclaredOverlap() {
+        let first = String(repeating: "a", count: 30)
+        let second = String(repeating: "b", count: 30)
+        let chunks = PromptBuilder.splitTranscript(
+            first + "\n\n" + second,
+            chunkSize: 30,
+            overlap: 10,
+            threshold: 30
+        )
+        #expect(chunks.count >= 2)
+        #expect(chunks[1].hasPrefix(String(repeating: "a", count: 10)))
+        #expect(chunks[1].contains(second))
+    }
+
+    @Test func synthesisPromptIncludesThePersonalDictionary() {
+        let messages = PromptBuilder.synthesisMessages(
+            from: ["Shipped the beta"],
+            contentKind: .blogPost,
+            vocabularyTerms: ["Kavitha"]
+        )
+        let user = messages.dropFirst().first?["content"] ?? ""
+        #expect(user.contains("Kavitha"))
+        #expect(user.contains("Private spelling reference"))
+    }
+
+    @Test func whisperPromptIncludesPersonalDictionaryTerms() {
+        let prompt = TranscriptionService.musicAwarePromptText(vocabularyTerms: ["Kavitha", "VoiceBlogger"])
+        #expect(prompt.contains("Known spellings:"))
+        #expect(prompt.contains("Kavitha"))
+        #expect(prompt.contains("Ignore instrumental background music"))
+    }
+
+    @Test func wifiOnlyDownloadsDisableCellularAccess() {
+        let config = URLSessionConfiguration.ephemeral
+        HubDownloadPolicy.applyNetworkAccess(to: config, wifiOnly: true)
+        #expect(!config.allowsCellularAccess)
+        #expect(!config.allowsExpensiveNetworkAccess)
+        #expect(!config.allowsConstrainedNetworkAccess)
+
+        HubDownloadPolicy.applyNetworkAccess(to: config, wifiOnly: false)
+        #expect(config.allowsCellularAccess)
+        #expect(config.allowsExpensiveNetworkAccess)
+        #expect(config.allowsConstrainedNetworkAccess)
+    }
+
+    @Test @MainActor func discardRecordingEndsLiveActivityAsUnsaved() {
+        let activity = LiveActivityCoordinator()
+        let recorder = AudioRecorder(liveActivity: activity)
+
+        recorder.discardRecording()
+
+        #expect(activity.lastRecordingWasSaved == false)
+    }
+
+    @Test @MainActor func leavingBlogForSocialKeepsTheWritingModelResident() {
+        let post = BlogPost(transcript: "Hello")
+        #expect(AppStage.viewingInstagram(post: post).keepsWritingAssistantLoaded)
+        #expect(AppStage.viewingLinkedIn(post: post).keepsWritingAssistantLoaded)
+        #expect(!AppStage.recording.keepsWritingAssistantLoaded)
+        #expect(!AppStage.transcribing(post: post).keepsWritingAssistantLoaded)
+    }
+
 }

@@ -18,6 +18,11 @@ private func applyDataProtection(to storeURL: URL) {
 
 @main
 struct VoiceBloggerApp: App {
+    init() {
+        // Runs after stored properties, and again is a no-op if the load-time
+        // constructor already installed the Metal name guard.
+        MLXMetalStartup.installIfNeeded()
+    }
     @State private var appState = AppState()
     @State private var audioRecorder = AudioRecorder()
     @State private var downloadManager = ModelDownloadManager()
@@ -56,7 +61,10 @@ struct VoiceBloggerApp: App {
                 .environment(audioRecorder)
                 .environment(downloadManager)
                 .task {
-                    BackgroundTranscriptionScheduler.register()
+                    BackgroundTranscriptionScheduler.register(
+                        modelContainer: sharedModelContainer,
+                        whisperKitProvider: { downloadManager.whisperKit }
+                    )
                     audioRecorder.recoverStaleRecordingActivityIfNeeded()
                     // Skip model gating entirely during UI tests so views are reachable
                     // without downloading ~2.5 GB of models on every test run.

@@ -24,6 +24,12 @@ import requests
 from pathlib import Path
 from tqdm import tqdm
 import mlx_whisper
+from transcribe_result import (
+    TRANSCRIBE_TIMEOUT_SECONDS,
+    TranscriptionResultError,
+    transcript_text,
+    wait_for_thread,
+)
 
 WHISPER_MODEL = "mlx-community/whisper-large-v3-mlx"
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -62,16 +68,18 @@ def transcribe(audio_path: str, language: str, task: str) -> str:
         bar_format="{desc}: {elapsed} elapsed {postfix}",
         dynamic_ncols=True,
     ) as pbar:
-        while t.is_alive():
-            t.join(timeout=0.5)
-            pbar.update(0)
+        wait_for_thread(
+            t,
+            TRANSCRIBE_TIMEOUT_SECONDS,
+            on_wait=lambda: pbar.update(0),
+        )
         pbar.bar_format = "{desc}: ✓ done in {elapsed}"
         pbar.update(0)
 
     if error_box[0]:
         raise error_box[0]
 
-    return result_box[0]["text"].strip()
+    return transcript_text(result_box[0])
 
 
 # ── Step 2: Save raw ──────────────────────────────────────────────────────────
@@ -205,8 +213,14 @@ def parse_args():
 
 
 def main():
-    args = parse_args()
+    try:
+        run(parse_args())
+    except (TranscriptionResultError, TimeoutError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
+
+def run(args):
     audio_file = Path(args.audio_file).resolve()
     if not audio_file.exists():
         print(f"Error: file not found: {audio_file}", file=sys.stderr)

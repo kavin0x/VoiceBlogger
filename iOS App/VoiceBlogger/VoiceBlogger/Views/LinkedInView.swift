@@ -213,6 +213,7 @@ struct LinkedInView: View {
                     await Task.yield()
                 }
             }
+            try Task.checkCancellation()
             let completedText = try LLMGenerationCompletion.validate(fullText)
             streamedText = completedText
             post.linkedinPost = completedText

@@ -193,6 +193,7 @@ struct BlogView: View {
             }
             .onDisappear {
                 cancelGenerationTask()
+                guard !appState.stage.keepsWritingAssistantLoaded else { return }
                 downloadManager.releaseLLMService()
                 Task { await downloadManager.warmWhisper() }
             }
@@ -283,6 +284,7 @@ struct BlogView: View {
                     await Task.yield()
                 }
             }
+            try Task.checkCancellation()
             let completedText = try LLMGenerationCompletion.validate(fullText)
             streamedText = completedText
             post.blogContent = completedText

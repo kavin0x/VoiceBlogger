@@ -55,6 +55,18 @@ private final class GenerationCancellationBox: @unchecked Sendable {
         lock.unlock()
         handler?()
     }
+
+    nonisolated func markEndedByCancel() {
+        lock.lock()
+        didCancel = true
+        lock.unlock()
+    }
+
+    nonisolated var wasCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return didCancel
+    }
 }
 
 final class LLMService: Sendable {
@@ -62,7 +74,7 @@ final class LLMService: Sendable {
 
     init(container: ModelContainer) {
         self.container = container
-        MLX.Memory.cacheLimit = DeviceRAMTier.current.mlxCacheLimitBytes
+        MLX.Memory.cacheLimit = ModelQualityLevel.current.mlxCacheLimitBytes(on: DeviceRAMTier.current)
     }
 
     static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
@@ -234,17 +246,22 @@ final class LLMService: Sendable {
 
                         if shouldCancelGeneration {
                             generationTask.cancel()
+                            cancellationBox.markEndedByCancel()
                         }
                         await generationTask.value
                         if clearCacheWhenDone {
                             MLX.Memory.clearCache()
                         }
                     }
-                    continuation.finish()
+                    if cancellationBox.wasCancelled || Task.isCancelled {
+                        continuation.finish(throwing: CancellationError())
+                    } else {
+                        continuation.finish()
+                    }
                 } catch is CancellationError {
                     cancellationBox.cancel()
                     if clearCacheWhenDone { MLX.Memory.clearCache() }
-                    continuation.finish()
+                    continuation.finish(throwing: CancellationError())
                 } catch {
                     cancellationBox.cancel()
                     if clearCacheWhenDone { MLX.Memory.clearCache() }
@@ -290,14 +307,32 @@ final class LLMService: Sendable {
     }
 
     func polishTranscript(_ transcript: String) async throws -> String {
-        let messages: [[String: String]] = [
-            ["role": "system", "content": """
-            Clean up a voice transcript. Remove filler words and false starts. Fix punctuation and paragraph breaks.
-            Do not add new facts. Output ONLY the polished transcript — no preamble, reasoning, or labels.
-            """],
-            ["role": "user", "content": transcript]
-        ]
-        return try await collectStream(messages: messages, maxTokens: 800, temperature: 0.2, clearCacheWhenDone: false)
+        let pieces = TranscriptPolishPolicy.chunks(of: transcript)
+        guard !pieces.isEmpty else { return transcript }
+        var cleaned: [String] = []
+        cleaned.reserveCapacity(pieces.count)
+        for piece in pieces {
+            try Task.checkCancellation()
+            let maxTokens = TranscriptPolishPolicy.maxTokens(for: piece)
+            let messages: [[String: String]] = [
+                ["role": "system", "content": """
+                Clean up a voice transcript. Remove filler words and false starts. Fix punctuation and paragraph breaks.
+                Keep every fact, name, and sentence. Do not summarize or shorten. Do not add new facts.
+                Output ONLY the polished transcript — no preamble, reasoning, or labels.
+                """],
+                ["role": "user", "content": piece]
+            ]
+            let polished = try await collectStream(
+                messages: messages,
+                maxTokens: maxTokens,
+                temperature: 0.2,
+                clearCacheWhenDone: false
+            )
+            cleaned.append(
+                TranscriptPolishPolicy.acceptedText(original: piece, polished: polished, maxTokens: maxTokens)
+            )
+        }
+        return cleaned.joined(separator: "\n\n")
     }
 
     // Multi-pass path: summarise each chunk then synthesise into the detected content type.
@@ -344,7 +379,8 @@ final class LLMService: Sendable {
                     let synthesisMessages = PromptBuilder.synthesisMessages(
                         from: summaries,
                         contentKind: contentKind,
-                        isSpeakerAnnotated: isSpeakerAnnotated
+                        isSpeakerAnnotated: isSpeakerAnnotated,
+                        vocabularyTerms: vocabularyTerms
                     )
                     for try await token in self.generateStream(messages: synthesisMessages, maxTokens: 2048, temperature: 0.38, clearCacheWhenDone: true) {
                         try Task.checkCancellation()
@@ -352,7 +388,7 @@ final class LLMService: Sendable {
                     }
                     continuation.finish()
                 } catch is CancellationError {
-                    continuation.finish()
+                    continuation.finish(throwing: CancellationError())
                 } catch {
                     continuation.finish(throwing: error)
                 }

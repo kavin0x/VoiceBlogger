@@ -4,7 +4,7 @@ import MLXLMCommon
 import WhisperKit
 
 /// Centralized, device-tier-aware tuning for on-device Whisper and MLX inference.
-enum InferencePerformancePolicy {
+nonisolated enum InferencePerformancePolicy {
     // MARK: - Live recording chunks (16 kHz samples)
 
     /// Samples advanced per live chunk — smaller windows surface text sooner on fast devices.
@@ -89,7 +89,17 @@ enum InferencePerformancePolicy {
     // MARK: - LLM
 
     nonisolated static var parallelChunkSummaryWidth: Int {
-        switch DeviceRAMTier.current {
+        parallelChunkSummaryWidth(quality: ModelQualityLevel.current, tier: DeviceRAMTier.current)
+    }
+
+    /// The 3B High Quality model cannot run overlapping chunk summaries. Two
+    /// resident forwards of those weights exceed the jetsam limit.
+    nonisolated static func parallelChunkSummaryWidth(
+        quality: ModelQualityLevel,
+        tier: DeviceRAMTier
+    ) -> Int {
+        if quality == .high { return 1 }
+        switch tier {
         case .ample: return 3
         case .standard: return 2
         case .constrained: return 1
@@ -109,17 +119,39 @@ enum InferencePerformancePolicy {
         params.frequencyPenalty = 0.08
         params.frequencyContextSize = 160
 
-        switch DeviceRAMTier.current {
-        case .constrained:
+        let profile = llmMemoryProfile(
+            quality: ModelQualityLevel.current,
+            tier: DeviceRAMTier.current
+        )
+        if profile.quantizeKV {
             params.kvBits = 8
             params.kvGroupSize = 64
-        case .standard:
-            params.kvBits = 8
-            params.kvGroupSize = 64
-        case .ample:
-            // Larger prefill chunks improve prompt throughput on long transcripts.
-            params.prefillStepSize = 1024
+        }
+        if let prefillStepSize = profile.prefillStepSize {
+            params.prefillStepSize = prefillStepSize
         }
         return params
+    }
+
+    struct LLMMemoryProfile: Equatable, Sendable {
+        var quantizeKV: Bool
+        var prefillStepSize: Int?
+    }
+
+    /// High Quality always quantizes the KV cache and uses a smaller prefill.
+    /// A 1024-token prefill of the 3B model spikes activations enough to jetsam.
+    nonisolated static func llmMemoryProfile(
+        quality: ModelQualityLevel,
+        tier: DeviceRAMTier
+    ) -> LLMMemoryProfile {
+        if quality == .high {
+            return LLMMemoryProfile(quantizeKV: true, prefillStepSize: 512)
+        }
+        switch tier {
+        case .ample:
+            return LLMMemoryProfile(quantizeKV: false, prefillStepSize: 1024)
+        case .standard, .constrained:
+            return LLMMemoryProfile(quantizeKV: true, prefillStepSize: nil)
+        }
     }
 }

@@ -167,6 +167,26 @@ struct ContentView: View {
     }
 
     private func configureIntentFulfillment() {
+        audioRecorder.onInterruptedRecording = { take in
+            let post = BlogPost(
+                transcript: take.liveTranscript,
+                audioFilename: take.filename,
+                duration: take.duration,
+                transcriptionState: take.liveTranscript.isEmpty ? .untranscribed : .inProgress
+            )
+            modelContext.insert(post)
+            do {
+                try modelContext.save()
+                appState.navigateTo(.transcribing(post: post))
+                return true
+            } catch {
+                appState.showError("The recording stopped, and Voice Blogger could not add it to History. The audio file is still on this iPhone.")
+                return false
+            }
+        }
+        audioRecorder.onRecordingWriteFailed = {
+            appState.showError("The recording stopped early because the audio file could not be written. Unlock the iPhone and check History for the part that was saved.")
+        }
         IntentFulfillment.shared.configure(
             appState: appState,
             recorder: audioRecorder,

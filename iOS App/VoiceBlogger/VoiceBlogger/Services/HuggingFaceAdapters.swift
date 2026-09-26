@@ -6,7 +6,12 @@ import Tokenizers
 enum HubDownloadPolicy {
     // More parallel requests than this causes connection churn and disk contention on
     // iOS while providing no benefit for the small number of large model shards.
-    static let maximumConcurrentTransfers = 8
+    nonisolated static let maximumConcurrentTransfers = 8
+    nonisolated static let wifiOnlyDefaultsKey = DownloadNetworkPolicy.wifiOnlyDefaultsKey
+
+    nonisolated static func applyNetworkAccess(to config: URLSessionConfiguration, wifiOnly: Bool) {
+        DownloadNetworkPolicy.applyNetworkAccess(to: config, wifiOnly: wifiOnly)
+    }
 }
 
 // Adapts HuggingFace.HubClient to the MLXLMCommon.Downloader protocol.
@@ -18,7 +23,7 @@ struct HubDownloader: MLXLMCommon.Downloader {
         self.upstream = upstream
     }
 
-    private static func makeClient() -> HuggingFace.HubClient {
+    nonisolated private static func makeClient() -> HuggingFace.HubClient {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = HubDownloadPolicy.maximumConcurrentTransfers
         config.httpShouldUsePipelining = true
@@ -34,10 +39,10 @@ struct HubDownloader: MLXLMCommon.Downloader {
         config.waitsForConnectivity = true
         config.networkServiceType = .default
         config.httpAdditionalHeaders = ["Accept-Encoding": "br, gzip, deflate"]
-        // Allow downloads over cellular as well as Wi-Fi.
-        config.allowsCellularAccess = true
-        config.allowsExpensiveNetworkAccess = true
-        config.allowsConstrainedNetworkAccess = true
+        HubDownloadPolicy.applyNetworkAccess(
+            to: config,
+            wifiOnly: UserDefaults.standard.bool(forKey: HubDownloadPolicy.wifiOnlyDefaultsKey)
+        )
         return HubClient(session: URLSession(configuration: config))
     }
 

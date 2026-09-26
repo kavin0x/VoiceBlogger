@@ -59,7 +59,10 @@ final class TranscriptionService: @unchecked Sendable {
         let whisperCacheDir = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
 
         let canonical = whisperCacheDir.appendingPathComponent(ModelIDs.whisper)
-        if directoryContainsFiles(canonical) { return canonical }
+        if ModelQualityLevel.isSafeToLoad(whisperModelID: ModelIDs.whisper, on: DeviceRAMTier.current),
+           directoryContainsFiles(canonical) {
+            return canonical
+        }
 
         guard let entries = try? fm.contentsOfDirectory(
             at: whisperCacheDir,
@@ -68,6 +71,10 @@ final class TranscriptionService: @unchecked Sendable {
         ) else { return nil }
 
         for entry in entries where entry.lastPathComponent != ModelIDs.whisper {
+            guard ModelQualityLevel.isSafeToLoad(
+                whisperModelID: entry.lastPathComponent,
+                on: DeviceRAMTier.current
+            ) else { continue }
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
             if isDir && directoryContainsFiles(entry) { return entry }
         }
@@ -99,6 +106,7 @@ final class TranscriptionService: @unchecked Sendable {
     func transcribe(
         audioURL: URL,
         mode: TranscriptionMode,
+        vocabularyTerms: [String] = [],
         onProgress: (@Sendable (TranscriptionProgressPhase) -> Void)? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil
     ) async throws -> SpeakerAnnotatedTranscript {
@@ -108,7 +116,10 @@ final class TranscriptionService: @unchecked Sendable {
         try validateAudioFile(at: audioURL)
 
         let suppressTokens = Self.nonSpeechAnnotationTokens(for: whisperKit.tokenizer)
-        let promptTokens = Self.musicAwarePromptTokens(for: whisperKit.tokenizer)
+        let promptTokens = Self.musicAwarePromptTokens(
+            for: whisperKit.tokenizer,
+            vocabularyTerms: vocabularyTerms
+        )
         let audioDuration = Self.audioDurationSeconds(at: audioURL)
         let options = Self.decodingOptions(
             for: mode,
@@ -263,13 +274,28 @@ final class TranscriptionService: @unchecked Sendable {
 
     /// Condition the decoder so spoken words and lyrics are kept, while instrumental
     /// background music is less likely to be hallucinated into fake speech.
-    nonisolated static func musicAwarePromptTokens(for tokenizer: (any WhisperTokenizer)?) -> [Int]? {
-        guard let tokenizer else { return nil }
-        let prompt = """
+    /// Personal-dictionary terms are included so names are not guessed from sound alone.
+    nonisolated static func musicAwarePromptText(vocabularyTerms: [String] = []) -> String {
+        var prompt = """
         Transcribe spoken words and sung lyrics accurately. \
         Ignore instrumental background music. \
         Do not invent lyrics or speech from music alone.
         """
+        let terms = vocabularyTerms
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return prompt }
+        let list = terms.prefix(20).joined(separator: ", ")
+        prompt += " Known spellings: \(String(list.prefix(180)))."
+        return prompt
+    }
+
+    nonisolated static func musicAwarePromptTokens(
+        for tokenizer: (any WhisperTokenizer)?,
+        vocabularyTerms: [String] = []
+    ) -> [Int]? {
+        guard let tokenizer else { return nil }
+        let prompt = musicAwarePromptText(vocabularyTerms: vocabularyTerms)
         let encoded = tokenizer.encode(text: prompt)
         let filtered = encoded.filter { $0 < tokenizer.specialTokens.specialTokenBegin }
         return filtered.isEmpty ? nil : filtered
@@ -309,9 +335,11 @@ final class TranscriptionService: @unchecked Sendable {
                     audioPath: audioPath,
                     decodeOptions: decodeOptions,
                     callback: { progress in
+                        if TranscriptionStallPolicy.resetsTimer(callbackInvoked: true) {
+                            tracker.bump()
+                        }
                         let filtered = Self.filterTokens(progress.text)
                         if !filtered.isEmpty {
-                            tracker.bump()
                             onPartial?(filtered)
                         }
                         return true

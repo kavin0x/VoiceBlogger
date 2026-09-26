@@ -12,6 +12,9 @@ final class LiveActivityCoordinator {
     private var recordingUpdateGeneration = 0
     private var isRecordingActivityActive = false
 #endif
+    /// Records the flag from the latest `endRecording` call so discard vs save stays testable
+    /// without starting an ActivityKit activity.
+    private(set) var lastRecordingWasSaved: Bool?
 
     func startRecording(startedAt: Date = .now) {
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
@@ -48,17 +51,18 @@ final class LiveActivityCoordinator {
 #endif
     }
 
-    func endRecording() {
+    func endRecording(saved: Bool = true) {
+        lastRecordingWasSaved = saved
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         isRecordingActivityActive = false
         recordingUpdateGeneration += 1
 
         let state = VoiceBloggerActivityAttributes.ContentState(
-            title: "Recording Saved",
-            detail: "Ready to transcribe",
+            title: saved ? "Recording Saved" : "Recording Interrupted",
+            detail: saved ? "Ready to transcribe" : "Open Voice Blogger to transcribe the saved take",
             progress: nil,
             startedAt: nil,
-            symbolName: "checkmark.circle.fill",
+            symbolName: saved ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
             wordCount: nil
         )
         end(kind: .recording, state: state)

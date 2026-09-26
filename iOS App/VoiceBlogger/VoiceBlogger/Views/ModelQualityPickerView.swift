@@ -13,16 +13,30 @@ struct ModelQualityPickerView: View {
                     QualityOptionRow(
                         level: level,
                         isSelected: selection == level,
-                        isRecommended: level == ModelQualityLevel.recommended
+                        isRecommended: level == ModelQualityLevel.recommended,
+                        isEnabled: level.isSupportedOnThisDevice
                     ) {
+                        guard level.isSupportedOnThisDevice else { return }
                         withAnimation(.easeInOut(duration: 0.2)) {
                             selection = level
                         }
                     }
                 }
             }
+
+            if !ModelQualityLevel.high.isSupportedOnThisDevice {
+                Text("High Quality stays off on this device. That model is too large and closes the app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if !selection.isSupportedOnThisDevice {
+                selection = ModelQualityLevel.recommended
+            }
+        }
     }
 }
 
@@ -30,6 +44,7 @@ private struct QualityOptionRow: View {
     let level: ModelQualityLevel
     let isSelected: Bool
     let isRecommended: Bool
+    let isEnabled: Bool
     let onSelect: () -> Void
 
     private var rowFill: Color {
@@ -51,15 +66,18 @@ private struct QualityOptionRow: View {
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(level.displayName), \(level.tagline), \(level.totalDownloadSizeLabel)")
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel("\(level.displayName), \(level.unavailableReason ?? level.tagline), \(level.totalDownloadSizeLabel)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityHint(isEnabled ? "" : (level.unavailableReason ?? "Unavailable on this device"))
     }
 
     private var rowContent: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 titleRow
-                Text(level.tagline)
+                Text(level.unavailableReason ?? level.tagline)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
