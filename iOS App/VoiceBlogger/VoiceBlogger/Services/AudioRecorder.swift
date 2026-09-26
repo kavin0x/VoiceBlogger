@@ -62,8 +62,9 @@ final class AudioRecorder: NSObject {
         InferencePerformancePolicy.liveChunkWindowSamples
     }
 
-    init(liveActivity: LiveActivityCoordinator = LiveActivityCoordinator()) {
-        self.liveActivity = liveActivity
+    init(liveActivity: LiveActivityCoordinator? = nil) {
+        // Default arguments are nonisolated, so the MainActor coordinator is created in the body.
+        self.liveActivity = liveActivity ?? LiveActivityCoordinator()
         super.init()
         let status = AVAudioApplication.shared.recordPermission
         permissionGranted = status == .granted

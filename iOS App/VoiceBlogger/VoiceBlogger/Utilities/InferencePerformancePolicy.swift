@@ -82,7 +82,7 @@ nonisolated enum InferencePerformancePolicy {
     }
 
     /// VAD chunking helps long recordings stay within memory and can reduce wall time.
-    nonisolated static func whisperChunkingStrategy(audioDuration: TimeInterval) -> ChunkingStrategy? {
+    nonisolated static func whisperChunkingStrategy(audioDuration: TimeInterval) -> ChunkingStrategy {
         audioDuration > 45 ? .vad : .none
     }
 

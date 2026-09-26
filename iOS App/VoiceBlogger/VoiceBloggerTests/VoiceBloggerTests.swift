@@ -614,7 +614,7 @@ struct VoiceBloggerTests {
     }
 
     @Test func inferencePerformancePolicyUsesVADForLongAudio() {
-        #expect(InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: 60) != .none)
+        #expect(InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: 60) == .vad)
         #expect(InferencePerformancePolicy.whisperChunkingStrategy(audioDuration: 20) == .none)
     }
 

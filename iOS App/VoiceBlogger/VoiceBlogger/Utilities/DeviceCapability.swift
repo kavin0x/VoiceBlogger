@@ -55,7 +55,7 @@ nonisolated enum DeviceRAMTier: Comparable, Sendable {
 
 // Returns the number of bytes that os_proc_available_memory() reports right now.
 // os_proc_available_memory() returns size_t (Int on 64-bit iOS). Returns 0 on simulator.
-func availableMemoryBytes() -> UInt64 {
+nonisolated func availableMemoryBytes() -> UInt64 {
     let raw = os_proc_available_memory()
     guard raw > 0 else { return 0 }
     return UInt64(raw)
@@ -64,7 +64,7 @@ func availableMemoryBytes() -> UInt64 {
 // Returns true if there is at least `requiredMB` MB of headroom before loading
 // a model. On constrained or moderate-RAM devices this prevents OOM kills when
 // both Whisper and the LLM would otherwise be resident simultaneously.
-func hasAvailableMemory(requiredMB: Int) -> Bool {
+nonisolated func hasAvailableMemory(requiredMB: Int) -> Bool {
     let available = availableMemoryBytes()
     guard available > 0 else { return true }  // unknown — optimistic
     return available >= UInt64(requiredMB) * 1024 * 1024

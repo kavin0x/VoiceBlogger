@@ -2,7 +2,8 @@ import AVFoundation
 import Foundation
 
 /// Smooths gain across buffers so quiet speech is boosted without pumping between chunks.
-final class SpeechGainController: @unchecked Sendable {
+/// Nonisolated because the audio tap mutates the envelope off the main actor, guarded by `lock`.
+nonisolated final class SpeechGainController: @unchecked Sendable {
     private let lock = NSLock()
     private var envelope: Float = 1.0
 
