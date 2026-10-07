@@ -1057,4 +1057,118 @@ struct VoiceBloggerTests {
         #expect(!BlogOverflowMenu.includesContentActions(displayText: "", isGenerating: true))
     }
 
+    @Test func sentenceSpansKeepTheClosingQuoteWithTheSentence() {
+        let sentences = PromptBuilder.sentenceSpans(in: "She said \"hello.\" Then she left.")
+        #expect(sentences == ["She said \"hello.\"", "Then she left."])
+        #expect(PromptBuilder.sentenceSpans(in: "He shouted \"Stop!\"") == ["He shouted \"Stop!\""])
+    }
+
+    @Test func socialSummaryDoesNotCutADecimalPoint() {
+        let messages = PromptBuilder.instagramMessages(
+            blogContent: "We grew 3.14x after the launch. ZEBRAFINISH belongs only in the second sentence."
+        )
+        let user = messages.last?["content"] ?? ""
+        #expect(user.contains("3.14x"))
+        #expect(!user.contains("ZEBRAFINISH"))
+    }
+
+    @Test func contentPromptCountsWordsAcrossLineBreaks() {
+        let messages = PromptBuilder.contentMessages(
+            transcript: "one\ntwo three\nfour",
+            contentKind: .notes
+        )
+        let user = messages.last?["content"] ?? ""
+        #expect(user.contains("~4 words"))
+    }
+
+    @Test func searchMatchesCapitalIWithoutFoldingItFirst() {
+        let post = BlogPost(title: "FILE")
+        #expect(SearchUtility.filter([post], query: "  I  ").count == 1)
+        #expect(SearchUtility.matchesField("FILE", query: "I"))
+        let folded = "I".lowercased(with: Locale(identifier: "tr_TR"))
+        #expect(folded == "ı")
+        #expect(!SearchUtility.matchesField("FILE", query: folded))
+    }
+
+    @Test func safetensorsHeaderLengthIsLittleEndianEvenWhenMisaligned() {
+        let length = UInt64(24).littleEndian
+        var prefix = Data()
+        withUnsafeBytes(of: length) { prefix.append(contentsOf: $0) }
+        #expect(SafetensorsSnapshot.headerByteLength(prefix: prefix) == 24)
+
+        var padded = Data([0xFF])
+        padded.append(prefix)
+        let misaligned = padded.subdata(in: 1..<9)
+        #expect(SafetensorsSnapshot.headerByteLength(prefix: misaligned) == 24)
+    }
+
+    @Test func corruptSafetensorsTensorRejectsTheWholeFile() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let header = """
+        {"good":{"dtype":"U8","shape":[4],"data_offsets":[0,4]},"bad":{"dtype":"U8","shape":[4],"data_offsets":["nope",4]}}
+        """
+        let weights = directory.appendingPathComponent("model.safetensors")
+        try Self.safetensorsFile(header: header, payloadBytes: 4).write(to: weights)
+        #expect(!SafetensorsSnapshot.isCompleteFile(weights))
+    }
+
+    @Test func safetensorsBooleanOffsetIsNotARealLength() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let header = #"{"w":{"dtype":"U8","shape":[4],"data_offsets":[0,true]}}"#
+        let weights = directory.appendingPathComponent("model.safetensors")
+        try Self.safetensorsFile(header: header, payloadBytes: 4).write(to: weights)
+        #expect(!SafetensorsSnapshot.isCompleteFile(weights))
+    }
+
+    @Test func emptySafetensorsIndexIsNotLoadable() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Self.safetensors(payloadBytes: 4).write(to: directory.appendingPathComponent("model.safetensors"))
+        try Data("{}".utf8).write(to: directory.appendingPathComponent("model.safetensors.index.json"))
+        #expect(!SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func unsavedRecordingActivityDoesNotPromiseATranscript() {
+        let copy = LiveActivityCoordinator.recordingEndContent(saved: false)
+        #expect(copy.title == "Recording Interrupted")
+        #expect(copy.detail == "This take was not added to your library")
+        #expect(LiveActivityCoordinator.recordingEndContent(saved: true).detail == "Ready to transcribe")
+    }
+
+    @Test func backgroundTranscriptionRetriesAMissingDownloadAndStopsOnEmptyAudio() {
+        #expect(BackgroundTranscriptionRetryPolicy.attemptResult(fileReady: false, error: nil) == .retry)
+        #expect(BackgroundTranscriptionRetryPolicy.attemptResult(fileReady: true, error: nil) == .succeeded)
+        #expect(
+            BackgroundTranscriptionRetryPolicy.attemptResult(
+                fileReady: true,
+                error: TranscriptionError.stillDownloading
+            ) == .retry
+        )
+        #expect(
+            BackgroundTranscriptionRetryPolicy.attemptResult(
+                fileReady: true,
+                error: TranscriptionError.emptyResult
+            ) == .giveUp
+        )
+        #expect(
+            BackgroundTranscriptionRetryPolicy.attemptResult(
+                fileReady: true,
+                error: CancellationError()
+            ) == .retry
+        )
+        #expect(BackgroundTranscriptionRetryPolicy.retryDelay >= 30)
+    }
+
+    private static func safetensorsFile(header: String, payloadBytes: Int) -> Data {
+        let headerData = Data(header.utf8)
+        var file = Data()
+        var length = UInt64(headerData.count).littleEndian
+        withUnsafeBytes(of: length) { file.append(contentsOf: $0) }
+        file.append(headerData)
+        file.append(Data(repeating: 1, count: payloadBytes))
+        return file
+    }
+
 }

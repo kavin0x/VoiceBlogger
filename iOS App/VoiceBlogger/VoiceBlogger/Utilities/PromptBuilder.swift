@@ -123,7 +123,8 @@ enum PromptBuilder {
         return applyOverlap(base, overlap: overlap)
     }
 
-    /// Keeps the terminator. A period between digits (3.14) is not a sentence break.
+    /// Keeps the terminator, including a closing quote or bracket that sits on it.
+    /// A period between digits (3.14) is not a sentence break.
     nonisolated static func sentenceSpans(in text: String) -> [String] {
         var spans: [String] = []
         var start = text.startIndex
@@ -136,16 +137,22 @@ enum PromptBuilder {
                 let previous: Character? = index > text.startIndex ? text[text.index(before: index)] : nil
                 let following: Character? = next < text.endIndex ? text[next] : nil
                 let decimalPoint = character == "." && previous?.isNumber == true && following?.isNumber == true
-                let boundary = !decimalPoint && (following == nil || following?.isWhitespace == true || following == "\"" || following == "”")
-                if boundary {
-                    let span = String(text[start..<next]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !span.isEmpty { spans.append(span) }
-                    start = next
-                    while start < text.endIndex, text[start].isWhitespace {
-                        start = text.index(after: start)
+                if !decimalPoint {
+                    var end = next
+                    while end < text.endIndex, isClosingWrapper(text[end]) {
+                        end = text.index(after: end)
                     }
-                    index = start
-                    continue
+                    let afterClosers: Character? = end < text.endIndex ? text[end] : nil
+                    if afterClosers == nil || afterClosers?.isWhitespace == true {
+                        let span = String(text[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !span.isEmpty { spans.append(span) }
+                        start = end
+                        while start < text.endIndex, text[start].isWhitespace {
+                            start = text.index(after: start)
+                        }
+                        index = start
+                        continue
+                    }
                 }
             }
             index = next
@@ -156,6 +163,27 @@ enum PromptBuilder {
             if !rest.isEmpty { spans.append(rest) }
         }
         return spans
+    }
+
+    nonisolated private static func isClosingWrapper(_ character: Character) -> Bool {
+        switch character {
+        case "\"", "”", "'", "’", ")", "]":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// True when `span` ends on sentence punctuation, allowing trailing closers (`."`).
+    nonisolated private static func endsAsSentence(_ span: String) -> Bool {
+        var index = span.endIndex
+        while index > span.startIndex {
+            index = span.index(before: index)
+            let character = span[index]
+            if character == "." || character == "!" || character == "?" { return true }
+            if !isClosingWrapper(character) { return false }
+        }
+        return false
     }
 
     nonisolated static func splitOversizedParagraph(_ text: String, chunkSize: Int) -> [String] {
@@ -290,7 +318,7 @@ enum PromptBuilder {
         isSpeakerAnnotated: Bool = false,
         vocabularyTerms: [String] = []
     ) -> [[String: String]] {
-        let wordCount = transcript.split(separator: " ").count
+        let wordCount = transcript.split(whereSeparator: \.isWhitespace).count
         let safeTranscript = transcript.count > maxTranscriptCharacters
             ? String(transcript.prefix(maxTranscriptCharacters))
             : transcript
@@ -476,8 +504,11 @@ enum PromptBuilder {
             guard !paragraphLines.isEmpty else { return }
             let body = paragraphLines.joined(separator: " ")
             paragraphLines = []
-            if let range = body.range(of: "[.!?]", options: .regularExpression) {
-                result.append(String(body[body.startIndex...range.lowerBound]))
+            let sentences = sentenceSpans(in: body)
+            if sentences.count > 1, let first = sentences.first {
+                result.append(first)
+            } else if let only = sentences.first, endsAsSentence(only) {
+                result.append(only)
             } else {
                 result.append(String(body.prefix(120)))
             }

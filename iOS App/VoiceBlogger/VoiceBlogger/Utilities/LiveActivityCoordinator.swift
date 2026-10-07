@@ -51,15 +51,25 @@ final class LiveActivityCoordinator {
 #endif
     }
 
+    /// Copy for the activity that replaces the live recording. An unsaved take must not
+    /// tell the person to transcribe audio that was discarded or never written into the library.
+    static func recordingEndContent(saved: Bool) -> (title: String, detail: String) {
+        if saved {
+            return ("Recording Saved", "Ready to transcribe")
+        }
+        return ("Recording Interrupted", "This take was not added to your library")
+    }
+
     func endRecording(saved: Bool = true) {
         lastRecordingWasSaved = saved
 #if !targetEnvironment(macCatalyst) && canImport(ActivityKit)
         isRecordingActivityActive = false
         recordingUpdateGeneration += 1
 
+        let copy = Self.recordingEndContent(saved: saved)
         let state = VoiceBloggerActivityAttributes.ContentState(
-            title: saved ? "Recording Saved" : "Recording Interrupted",
-            detail: saved ? "Ready to transcribe" : "Open Voice Blogger to transcribe the saved take",
+            title: copy.title,
+            detail: copy.detail,
             progress: nil,
             startedAt: nil,
             symbolName: saved ? "checkmark.circle.fill" : "exclamationmark.circle.fill",

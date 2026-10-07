@@ -26,8 +26,9 @@ enum SafetensorsSnapshot {
         defer { try? handle.close() }
 
         guard let lengthData = try? handle.read(upToCount: 8), lengthData.count == 8 else { return false }
-        let headerLength = lengthData.withUnsafeBytes { $0.load(as: UInt64.self) }
-        guard headerLength > 1, headerLength < 100_000_000 else { return false }
+        guard let headerLength = headerByteLength(prefix: lengthData),
+              headerLength > 1,
+              headerLength < 100_000_000 else { return false }
         guard size >= 8 + headerLength else { return false }
 
         guard let headerData = try? handle.read(upToCount: Int(headerLength)),
@@ -42,8 +43,10 @@ enum SafetensorsSnapshot {
             guard let tensor = value as? [String: Any],
                   let offsets = tensor["data_offsets"] as? [Any],
                   offsets.count == 2,
-                  let end = jsonUInt64(offsets[1])
-            else { continue }
+                  let start = jsonUInt64(offsets[0]),
+                  let end = jsonUInt64(offsets[1]),
+                  end >= start
+            else { return false }
             tensorCount += 1
             if end > maxEnd { maxEnd = end }
         }
@@ -65,11 +68,12 @@ enum SafetensorsSnapshot {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return false }
 
-        if let weightMap = json["weight_map"] as? [String: String] {
-            let required = Set(weightMap.values)
-            let present = Set(weights.map(\.lastPathComponent))
-            guard required.isSubset(of: present) else { return false }
+        guard let weightMap = json["weight_map"] as? [String: String], !weightMap.isEmpty else {
+            return false
         }
+        let required = Set(weightMap.values)
+        let present = Set(weights.map(\.lastPathComponent))
+        guard required.isSubset(of: present) else { return false }
 
         if let metadata = json["metadata"] as? [String: Any],
            let total = jsonUInt64(metadata["total_size"]),
@@ -88,8 +92,25 @@ enum SafetensorsSnapshot {
         return UInt64(size)
     }
 
+    /// Safetensors stores the header size as a little-endian UInt64. `Data` bytes are not
+    /// guaranteed to be 8-byte aligned, and `load(as:)` traps on a misaligned pointer.
+    static func headerByteLength(prefix: Data) -> UInt64? {
+        guard prefix.count >= 8 else { return nil }
+        return prefix.withUnsafeBytes { raw in
+            guard raw.count >= 8 else { return nil }
+            return UInt64(littleEndian: raw.loadUnaligned(as: UInt64.self))
+        }
+    }
+
     private static func jsonUInt64(_ value: Any?) -> UInt64? {
-        (value as? NSNumber)?.uint64Value
+        guard let number = value as? NSNumber else { return nil }
+        // JSON `true` bridges as NSNumber and would otherwise become offset 1.
+        if CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+        let double = number.doubleValue
+        guard double >= 0, double.isFinite, double <= Double(UInt64.max), double == double.rounded() else {
+            return nil
+        }
+        return UInt64(double)
     }
 }
 

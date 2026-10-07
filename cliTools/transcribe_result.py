@@ -33,8 +33,14 @@ def wait_for_thread(thread: Thread, timeout: float, join_slice: float = 0.5, on_
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError(
-                f"Transcription exceeded {int(timeout)} seconds and was abandoned."
+                f"Transcription exceeded {timeout} seconds and was abandoned."
             )
         thread.join(timeout=min(join_slice, remaining))
+        if not thread.is_alive():
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Transcription exceeded {timeout} seconds and was abandoned."
+            )
         if on_wait is not None:
             on_wait()

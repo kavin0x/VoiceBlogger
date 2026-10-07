@@ -41,11 +41,11 @@ enum BackgroundTranscriptionScheduler {
         foregroundTask = task
     }
 
-    static func schedule(postID: UUID) {
+    static func schedule(postID: UUID, after delay: TimeInterval = 1) {
         let request = BGProcessingTaskRequest(identifier: taskIdentifier)
         request.requiresNetworkConnectivity = false
         request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 1)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: delay)
         UserDefaults.standard.set(postID.uuidString, forKey: pendingPostKey)
         try? BGTaskScheduler.shared.submit(request)
     }
@@ -65,8 +65,18 @@ enum BackgroundTranscriptionScheduler {
     nonisolated private static func handle(_ task: BGProcessingTask) {
         let completion = BackgroundTaskCompletion()
         let work = Task { @MainActor in
-            let success = await performPendingTranscription()
-            completion.finish(task, success: success)
+            let outcome = await performPendingTranscription()
+            switch outcome {
+            case .succeeded:
+                completion.finish(task, success: true)
+            case .giveUp:
+                completion.finish(task, success: false)
+            case .retry:
+                if let postID = pendingPostID() {
+                    schedule(postID: postID, after: BackgroundTranscriptionRetryPolicy.retryDelay)
+                }
+                completion.finish(task, success: false)
+            }
         }
         task.expirationHandler = {
             work.cancel()
@@ -80,13 +90,12 @@ enum BackgroundTranscriptionScheduler {
     }
 
     @MainActor
-    private static func performPendingTranscription() async -> Bool {
-        guard let postID = pendingPostID(), let modelContainer else { return false }
+    private static func performPendingTranscription() async -> BackgroundTranscriptionAttempt {
+        guard let postID = pendingPostID(), let modelContainer else { return .giveUp }
         let appIsActive = UIApplication.shared.applicationState == .active
         if appIsActive, let foregroundTask, !foregroundTask.isCancelled {
-            // The on-screen job is already transcribing. Leave the request queued.
-            schedule(postID: postID)
-            return false
+            // The on-screen job is already transcribing. The caller re-queues the request.
+            return .retry
         }
 
         if UIApplication.shared.applicationState != .active {
@@ -103,15 +112,18 @@ enum BackgroundTranscriptionScheduler {
         descriptor.fetchLimit = 1
         guard let post = try? context.fetch(descriptor).first else {
             clearPending(postID: postID)
-            return false
+            return .giveUp
         }
         if post.transcriptionState == .complete, !post.transcript.isEmpty {
             clearPending(postID: postID)
-            return true
+            return .succeeded
         }
-        guard let audioURL = post.audioFileURL else { return false }
+        guard let audioURL = post.audioFileURL else {
+            clearPending(postID: postID)
+            return .giveUp
+        }
         guard RecordingFileAccess.readiness(at: audioURL) == .ready else {
-            return false
+            return .retry
         }
 
         let reusedKit = whisperKitProvider?()
@@ -122,7 +134,7 @@ enum BackgroundTranscriptionScheduler {
                 mode: TranscriptionSettings.transcriptionMode,
                 vocabularyTerms: VocabularyStore.terms(from: context)
             )
-            guard !Task.isCancelled else { return false }
+            guard !Task.isCancelled else { return .retry }
             post.transcript = result.displayText
             post.detectedSpeakerCount = result.detectedSpeakerCount
             post.transcriptionState = .complete
@@ -131,9 +143,13 @@ enum BackgroundTranscriptionScheduler {
                 await service.cleanup()
             }
             clearPending(postID: postID)
-            return true
+            return .succeeded
         } catch {
-            return false
+            let outcome = BackgroundTranscriptionRetryPolicy.attemptResult(fileReady: true, error: error)
+            if outcome == .giveUp {
+                clearPending(postID: postID)
+            }
+            return outcome
         }
     }
 
@@ -152,5 +168,31 @@ enum BackgroundTranscriptionScheduler {
                 task.setTaskCompleted(success: success)
             }
         }
+    }
+}
+
+enum BackgroundTranscriptionAttempt: Equatable, Sendable {
+    case succeeded
+    case retry
+    case giveUp
+}
+
+enum BackgroundTranscriptionRetryPolicy: Sendable {
+    /// Wait before the next background attempt so a missing iCloud file does not spin.
+    nonisolated static let retryDelay: TimeInterval = 60
+
+    nonisolated static func attemptResult(fileReady: Bool, error: Error?) -> BackgroundTranscriptionAttempt {
+        guard fileReady else { return .retry }
+        guard let error else { return .succeeded }
+        if error is CancellationError { return .retry }
+        if let transcription = error as? TranscriptionError {
+            switch transcription {
+            case .stillDownloading, .notInitialized, .stalled:
+                return .retry
+            case .missingAudio, .unreadableAudio, .emptyResult:
+                return .giveUp
+            }
+        }
+        return .retry
     }
 }

@@ -171,8 +171,10 @@ final class AudioRecorder: NSObject {
         self.whisperConverter = createdWhisperConverter
         whisperPassthrough = createdWhisperConverter == nil
         outputAudioFile = outputFile
-        activeWhisperKit = whisperKit
         speechGainController.reset()
+        sampleQueue.sync {
+            activeWhisperKit = whisperKit
+        }
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             self?.processTapBuffer(buffer)
@@ -187,7 +189,9 @@ final class AudioRecorder: NSObject {
             self.archiveConverter = nil
             self.whisperConverter = nil
             whisperPassthrough = false
-            activeWhisperKit = nil
+            sampleQueue.sync {
+                activeWhisperKit = nil
+            }
             try? FileManager.default.removeItem(at: outputURL)
             Task.detached { AudioSessionManager.deactivate() }
             throw error
@@ -238,9 +242,9 @@ final class AudioRecorder: NSObject {
             RecordingStorage.protect(url)
         }
 
-        // Optimistically mark as finalizing if WhisperKit is active.
-        // sampleQueue will clear the flag if no tail samples remain.
-        if activeWhisperKit != nil {
+        // Read on sampleQueue. The tap mutates this flag off the main actor.
+        let hadWhisper = sampleQueue.sync { activeWhisperKit != nil }
+        if hadWhisper {
             isFinalizingTranscript = true
             isLivePreview = !liveTranscript.isEmpty
         }
@@ -646,7 +650,8 @@ final class AudioRecorder: NSObject {
 
     func recoverStaleRecordingActivityIfNeeded() {
         guard !isRecording, IntentStorage.consumeRecordingActive() else { return }
-        liveActivity.endRecording()
+        // The activity outlived the process, so the take never became a library row.
+        liveActivity.endRecording(saved: false)
     }
 }
 

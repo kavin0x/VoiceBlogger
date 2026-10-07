@@ -35,8 +35,19 @@ class TranscriptTextTests(unittest.TestCase):
         worker = threading.Thread(target=hang, daemon=True)
         worker.start()
         self.assertTrue(started.wait(1))
-        with self.assertRaises(TimeoutError):
+        with self.assertRaises(TimeoutError) as caught:
             wait_for_thread(worker, timeout=0.2, join_slice=0.05)
+        self.assertIn("0.2", str(caught.exception))
+
+    def test_wait_hook_is_not_called_after_the_worker_finishes(self):
+        def work():
+            time.sleep(0.05)
+
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+        calls = []
+        wait_for_thread(worker, timeout=2, join_slice=0.2, on_wait=lambda: calls.append(1))
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
