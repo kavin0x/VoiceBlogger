@@ -178,8 +178,13 @@ final class TranscriptionService: @unchecked Sendable {
     }
 
     private func validateAudioFile(at url: URL) throws {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        switch RecordingFileAccess.readiness(at: url) {
+        case .missing:
             throw TranscriptionError.missingAudio
+        case .downloading:
+            throw TranscriptionError.stillDownloading
+        case .ready:
+            break
         }
 
         do {
@@ -461,6 +466,7 @@ final class TranscriptionService: @unchecked Sendable {
 enum TranscriptionError: LocalizedError {
     case notInitialized
     case missingAudio
+    case stillDownloading
     case unreadableAudio
     case emptyResult
     case stalled
@@ -471,6 +477,9 @@ enum TranscriptionError: LocalizedError {
             return "Transcription service was already cleaned up."
         case .missingAudio:
             return "Audio file not found. The recording may have been deleted."
+        case .stillDownloading:
+            return RecordingReadiness.downloading.unavailableMessage
+                ?? "This recording is still downloading from iCloud."
         case .unreadableAudio:
             return "This recording could not be read. Share the audio file and try recording again."
         case .emptyResult:

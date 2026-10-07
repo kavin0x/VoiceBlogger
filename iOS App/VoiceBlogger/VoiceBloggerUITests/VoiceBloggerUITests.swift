@@ -23,13 +23,13 @@ final class VoiceBloggerUITests: XCTestCase {
 
     /// Shows ModelDownloadView (onboarding done, models not yet downloaded).
     private func launchAtModelDownloadView() {
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launch()
     }
 
     /// Shows RecordingView directly — bypasses the model-download gate via UI_TESTING env var.
     private func launchAtRecordingView() {
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launchEnvironment = ["UI_TESTING": "1"]
         app.launch()
     }
@@ -101,10 +101,10 @@ final class VoiceBloggerUITests: XCTestCase {
     // MARK: - Onboarding: Skip button
 
     @MainActor
-    func testOnboardingSkipJumpsToPrivacyPage() throws {
+    func testOnboardingSkipJumpsToICloudChoice() throws {
         launchWithFreshOnboarding()
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["Private by design"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Sync across your devices"].waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -150,14 +150,14 @@ final class VoiceBloggerUITests: XCTestCase {
     @MainActor
     func testOnboardingPrivacyPageShowsDownloadButton() throws {
         launchWithFreshOnboarding()
-        app.buttons["Skip"].tap()
+        tapNext(times: 3)
         XCTAssertTrue(app.buttons["Download AI Models"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsQualityPicker() throws {
         launchWithFreshOnboarding()
-        app.buttons["Skip"].tap()
+        tapNext(times: 3)
         XCTAssertTrue(app.staticTexts["Choose quality"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Balanced"].waitForExistence(timeout: 5))
     }
@@ -165,7 +165,7 @@ final class VoiceBloggerUITests: XCTestCase {
     @MainActor
     func testOnboardingPrivacyPageShowsWhisperSize() throws {
         launchWithFreshOnboarding()
-        app.buttons["Skip"].tap()
+        tapNext(times: 3)
         XCTAssertTrue(
             app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'GB'")).firstMatch
                 .waitForExistence(timeout: 5)
@@ -175,14 +175,14 @@ final class VoiceBloggerUITests: XCTestCase {
     @MainActor
     func testOnboardingPrivacyPageShowsLLMSize() throws {
         launchWithFreshOnboarding()
-        app.buttons["Skip"].tap()
+        tapNext(times: 3)
         XCTAssertTrue(app.staticTexts["High Quality"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testOnboardingPrivacyPageShowsTotalSize() throws {
         launchWithFreshOnboarding()
-        app.buttons["Skip"].tap()
+        tapNext(times: 3)
         XCTAssertTrue(app.buttons["Download AI Models"].waitForExistence(timeout: 5))
     }
 
@@ -388,6 +388,13 @@ final class VoiceBloggerUITests: XCTestCase {
         app.buttons["Settings"].tap()
         app.buttons["About"].tap()
         XCTAssertTrue(app.staticTexts["View on GitHub"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    private func tapNext(times: Int) {
+        for _ in 0..<times {
+            app.buttons["Next"].tap()
+        }
     }
 
     // MARK: - Launch performance

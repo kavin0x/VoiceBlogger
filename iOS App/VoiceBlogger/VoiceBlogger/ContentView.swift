@@ -8,6 +8,8 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("onboardingComplete") private var onboardingComplete = false
+    @AppStorage(ICloudSyncSettings.choiceMadeKey) private var iCloudChoiceMade = false
+    @Environment(LibraryStore.self) private var library
 
     @State private var darwinObserverToken: UnsafeMutableRawPointer?
     @State private var showReviewPrompt = false
@@ -31,6 +33,22 @@ struct ContentView: View {
             installDarwinObserverIfNeeded()
             processPendingIntents()
             downloadManager.evaluatePendingModelUpdates()
+            presentSyncErrorIfNeeded()
+        }
+        .onChange(of: library.syncError) { _, _ in
+            presentSyncErrorIfNeeded()
+        }
+        .sheet(isPresented: Binding(
+            get: { onboardingComplete && !iCloudChoiceMade },
+            set: { _ in }
+        )) {
+            NavigationStack {
+                ICloudSyncChoiceForm(onFinished: {})
+                    .padding(24)
+                    .navigationTitle("iCloud")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .interactiveDismissDisabled()
         }
         .onDisappear {
             removeDarwinObserverIfNeeded()
@@ -164,6 +182,11 @@ struct ContentView: View {
         case .history:
             MainTabView()
         }
+    }
+
+    private func presentSyncErrorIfNeeded() {
+        guard let message = library.consumeSyncError() else { return }
+        appState.showError(message)
     }
 
     private func configureIntentFulfillment() {

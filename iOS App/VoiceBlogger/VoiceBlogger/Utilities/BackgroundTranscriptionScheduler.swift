@@ -13,6 +13,10 @@ enum BackgroundTranscriptionScheduler {
     private static var foregroundTask: Task<Void, Never>?
     private static var whisperKitProvider: (@MainActor () -> WhisperKit?)?
 
+    static func updateModelContainer(_ modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
+    }
+
     static func register(
         modelContainer: ModelContainer,
         whisperKitProvider: (@MainActor () -> WhisperKit?)? = nil
@@ -105,8 +109,8 @@ enum BackgroundTranscriptionScheduler {
             clearPending(postID: postID)
             return true
         }
-        guard let audioURL = post.audioFileURL,
-              FileManager.default.fileExists(atPath: audioURL.path) else {
+        guard let audioURL = post.audioFileURL else { return false }
+        guard RecordingFileAccess.readiness(at: audioURL) == .ready else {
             return false
         }
 

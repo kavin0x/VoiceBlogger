@@ -94,7 +94,8 @@ final class LLMService: Sendable {
     }
 
     // Resolve the local HuggingFace cache directory for the LLM without any network I/O.
-    // Returns nil if the model hasn't been downloaded yet or the cache is in an unexpected state.
+    // Returns nil until the weight file is complete. A snapshot that only has config.json,
+    // or a model.safetensors cut off mid-download, must fall through to a resumable fetch.
     static func localModelDirectory() -> URL? {
         guard let repoID = HuggingFace.Repo.ID(rawValue: ModelIDs.llm) else { return nil }
         let cache = HubCache.default
@@ -102,13 +103,13 @@ final class LLMService: Sendable {
         // Primary path: use the HF cache ref to resolve the exact commit snapshot.
         if let commitHash = cache.resolveRevision(repo: repoID, kind: .model, ref: "main"),
            let directory = try? cache.snapshotPath(repo: repoID, kind: .model, commitHash: commitHash),
-           directoryContainsFiles(directory) {
+           SafetensorsSnapshot.isLoadable(directory) {
             return directory
         }
 
         // Fallback: the ref file may be missing (e.g. after an app update) even though
         // the snapshot files are fully on disk. Scan the snapshots directory directly and
-        // return the first hash-named subdirectory that contains files.
+        // return the first hash-named subdirectory whose weights are complete.
         return localModelDirectoryByScanning()
     }
 
@@ -132,39 +133,20 @@ final class LLMService: Sendable {
 
         for entry in entries {
             let isDir = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-            if isDir && directoryContainsFiles(entry) {
+            if isDir && SafetensorsSnapshot.isLoadable(entry) {
                 return entry
             }
         }
         return nil
     }
 
-    private static func directoryContainsFiles(_ directory: URL) -> Bool {
-        let fm = FileManager.default
-        // The HF cache stores model files as symlinks in snapshot dirs pointing to blobs.
-        // We check fm.fileExists (which resolves symlinks) rather than isRegularFileKey
-        // (which returns false for symlinks themselves on some OS versions).
-        guard let enumerator = fm.enumerator(
-            at: directory,
-            includingPropertiesForKeys: [.isSymbolicLinkKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return false
-        }
-
-        for case let url as URL in enumerator {
-            let vals = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey])
-            if vals?.isRegularFile == true || vals?.isSymbolicLink == true {
-                return true
-            }
-        }
-        return false
-    }
-
     // Load from a directory that was already downloaded (e.g. by a prefetch task).
     // Skips network I/O — goes straight to weight deserialization.
     static func makeFromDirectory(_ directory: URL) async throws -> LLMService {
-        try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
+        guard SafetensorsSnapshot.isLoadable(directory) else {
+            throw ModelValidationError.missingModelArtifacts
+        }
+        return try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
             let c = try await LLMModelFactory.shared.loadContainer(
                 from: directory,
                 using: HuggingFaceTokenizerLoader()

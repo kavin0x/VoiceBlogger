@@ -5,8 +5,10 @@
 //  Created by Kavin Shah on 5/30/26.
 //
 
+import AVFoundation
 import Foundation
 import Testing
+import WhisperKit
 @testable import VoiceBlogger
 
 struct VoiceBloggerTests {
@@ -633,6 +635,39 @@ struct VoiceBloggerTests {
         #expect(loudGain <= 1.1)
     }
 
+    @Test func recordingArchiveKeepsFullBandwidth() {
+        #expect(RecordingAudioSettings.archiveSampleRate == 48_000)
+        #expect(RecordingAudioSettings.whisperSampleRate == 16_000)
+        #expect(RecordingAudioSettings.archiveSampleRate(matching: 48_000) == 48_000)
+        #expect(RecordingAudioSettings.archiveSampleRate(matching: 44_100) == 44_100)
+        #expect(RecordingAudioSettings.archiveSampleRate(matching: 16_000) == 48_000)
+        #expect(RecordingAudioSettings.archiveBitRate >= 128_000)
+
+        let settings = RecordingAudioSettings.archiveFileSettings()
+        #expect(settings[AVSampleRateKey] as? Double == 48_000)
+        #expect(settings[AVEncoderBitRateKey] as? Int == RecordingAudioSettings.archiveBitRate)
+        #expect(settings[AVNumberOfChannelsKey] as? Int == 1)
+        #expect(settings[AVFormatIDKey] as? AudioFormatID == kAudioFormatMPEG4AAC)
+
+        let lossless = RecordingAudioSettings.losslessArchiveSettings()
+        #expect(lossless[AVSampleRateKey] as? Double == 48_000)
+        #expect(lossless[AVLinearPCMBitDepthKey] as? Int == 16)
+        #expect(lossless[AVFormatIDKey] as? AudioFormatID == kAudioFormatLinearPCM)
+    }
+
+    @Test func recordingConverterReservesResamplerTail() {
+        let inputFrames = 4096
+        let truncated = Int(Double(inputFrames) * 16_000 / 48_000)
+        let capacity = RecordingAudioSettings.outputFrameCapacity(
+            inputFrames: inputFrames,
+            sourceSampleRate: 48_000,
+            targetSampleRate: 16_000
+        )
+
+        #expect(truncated == 1_365)
+        #expect(capacity >= truncated + 256)
+    }
+
     @Test func speechGainControllerAppliesBoundedBoost() {
         var samples: [Float] = [0.01, -0.008, 0.012, -0.009]
         SpeechGainController.applyGain(5.0, to: &samples)
@@ -906,6 +941,100 @@ struct VoiceBloggerTests {
         recorder.discardRecording()
 
         #expect(activity.lastRecordingWasSaved == false)
+    }
+
+    @Test func incompleteSnapshotIsNotLoadable() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{\"model_type\":\"qwen2\"}".utf8).write(to: directory.appendingPathComponent("config.json"))
+
+        #expect(!SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func finishedSafetensorsSnapshotIsLoadable() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let weights = directory.appendingPathComponent("model.safetensors")
+        try Data(Self.safetensors(payloadBytes: 4)).write(to: weights)
+        #expect(SafetensorsSnapshot.isCompleteFile(weights))
+        #expect(SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func truncatedSafetensorsSnapshotIsNotLoadable() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var truncated = Data(Self.safetensors(payloadBytes: 64))
+        truncated.removeLast(32)
+        try truncated.write(to: directory.appendingPathComponent("model.safetensors"))
+
+        #expect(!SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func snapshotIndexRejectsAFileSmallerThanTheTensorPayload() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data(Self.safetensors(payloadBytes: 4)).write(to: directory.appendingPathComponent("model.safetensors"))
+        let index = """
+        {"metadata":{"total_size":791429257},"weight_map":{"model.layers.0.input_layernorm.weight":"model.safetensors"}}
+        """
+        try Data(index.utf8).write(to: directory.appendingPathComponent("model.safetensors.index.json"))
+
+        #expect(!SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func symlinkedSafetensorsBlobIsLoadable() throws {
+        let directory = try makeSnapshotDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let blob = directory.appendingPathComponent("blob")
+        try Data(Self.safetensors(payloadBytes: 4)).write(to: blob)
+        try FileManager.default.createSymbolicLink(
+            at: directory.appendingPathComponent("model.safetensors"),
+            withDestinationURL: blob
+        )
+
+        #expect(SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func droppedConnectionIsRetried() {
+        let lost = NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)
+        #expect(LLMNetworkRetry.shouldRetry(lost, attempt: 0))
+        #expect(LLMNetworkRetry.shouldRetry(lost, attempt: 2))
+        #expect(!LLMNetworkRetry.shouldRetry(lost, attempt: 3))
+        #expect(LLMNetworkRetry.delaySeconds(afterFailure: 1) == 2)
+        #expect(LLMNetworkRetry.delaySeconds(afterFailure: 3) == 8)
+    }
+
+    @Test func cancellationAndMissingWeightsAreNotRetried() {
+        #expect(!LLMNetworkRetry.shouldRetry(CancellationError(), attempt: 0))
+        #expect(!LLMNetworkRetry.shouldRetry(LLMLoadError.insufficientMemory, attempt: 0))
+        #expect(!LLMNetworkRetry.shouldRetry(DownloadBlockedOnCellularError(), attempt: 0))
+        #expect(!LLMNetworkRetry.shouldRetry(ModelValidationError.missingModelArtifacts, attempt: 0))
+        #expect(LLMNetworkRetry.isIncompleteWeightError(
+            NSError(domain: "MLX", code: 1, userInfo: [NSLocalizedDescriptionKey: "keyNotFound(path: [\"model\", \"layers\", \"0\", \"input_layernorm\", \"weight\"])"])
+        ))
+    }
+
+    private func makeSnapshotDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{\"model_type\":\"qwen2\"}".utf8).write(to: directory.appendingPathComponent("config.json"))
+        return directory
+    }
+
+    private static func safetensors(payloadBytes: Int) -> Data {
+        let header = #"{"w":{"dtype":"U8","shape":[\#(payloadBytes)],"data_offsets":[0,\#(payloadBytes)]}}"#
+        let headerData = Data(header.utf8)
+        var file = Data()
+        let length = UInt64(headerData.count).littleEndian
+        withUnsafeBytes(of: length) { file.append(contentsOf: $0) }
+        file.append(headerData)
+        file.append(Data(repeating: 1, count: payloadBytes))
+        return file
     }
 
     @Test @MainActor func leavingBlogForSocialKeepsTheWritingModelResident() {

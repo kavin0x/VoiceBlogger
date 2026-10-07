@@ -72,16 +72,12 @@ final class BlogPost {
 
     var audioFileURL: URL? {
         guard let name = audioFilename else { return nil }
-        return URL.recordingsDirectory.appendingPathComponent(name)
+        return RecordingLibraryMigration.fileURL(named: name, in: URL.recordingsDirectory)
     }
 }
 
 extension URL {
-    static var recordingsDirectory: URL {
-        // FileManager always returns at least one URL for .documentDirectory on iOS,
-        // but guard defensively rather than force-subscript.
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return docs.appendingPathComponent("recordings", isDirectory: true)
+    nonisolated static var recordingsDirectory: URL {
+        RecordingLocations.recordingsDirectory()
     }
 }

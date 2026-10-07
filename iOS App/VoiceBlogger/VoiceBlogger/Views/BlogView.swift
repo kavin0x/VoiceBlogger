@@ -150,7 +150,7 @@ struct BlogView: View {
                                 }
                                 if post.audioFileURL != nil {
                                     Button {
-                                        showAudioShareSheet = true
+                                        shareAudioIfLocal()
                                     } label: {
                                         Label("Share Audio", systemImage: "waveform")
                                     }
@@ -217,6 +217,19 @@ struct BlogView: View {
         if isGenerating {
             downloadManager.releaseLLMService()
         }
+    }
+
+    private func shareAudioIfLocal() {
+        guard let audioURL = post.audioFileURL else {
+            appState.showError(RecordingReadiness.missing.unavailableMessage ?? "Could not find this recording on this device.")
+            return
+        }
+        let readiness = RecordingFileAccess.readiness(at: audioURL)
+        if let message = readiness.unavailableMessage {
+            appState.showError(message)
+            return
+        }
+        showAudioShareSheet = true
     }
 
     private func commitEdits() {

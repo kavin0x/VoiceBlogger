@@ -5,6 +5,8 @@ struct OnboardingView: View {
     @AppStorage("onboardingComplete") private var onboardingComplete = false
     @State private var currentPage = 0
 
+    private let iCloudPage = 4
+
     var body: some View {
         ZStack {
             TabView(selection: $currentPage) {
@@ -14,17 +16,21 @@ struct OnboardingView: View {
                     .tag(1)
                 OnboardingBlogPage()
                     .tag(2)
-                OnboardingReadyPage { onboardingComplete = true }
+                OnboardingReadyPage {
+                    withAnimation { currentPage = iCloudPage }
+                }
                     .tag(3)
+                OnboardingICloudPage { onboardingComplete = true }
+                    .tag(iCloudPage)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             VStack {
                 HStack {
                     Spacer()
-                    if currentPage < 3 {
+                    if currentPage < iCloudPage {
                         Button("Skip") {
-                            withAnimation { currentPage = 3 }
+                            withAnimation { currentPage = iCloudPage }
                         }
                         .foregroundStyle(.secondary)
                         .padding(.top, 56)
@@ -34,7 +40,7 @@ struct OnboardingView: View {
                 Spacer()
                 ZStack {
                     HStack(spacing: 6) {
-                        ForEach(0..<4, id: \.self) { i in
+                        ForEach(0..<5, id: \.self) { i in
                             Capsule()
                                 .fill(i == currentPage ? Color.primary : Color.secondary.opacity(0.3))
                                 .frame(width: i == currentPage ? 20 : 8, height: 8)
@@ -43,7 +49,7 @@ struct OnboardingView: View {
                     }
                     .accessibilityHidden(true)
 
-                    if currentPage < 3 {
+                    if currentPage < iCloudPage {
                         HStack {
                             Spacer()
                             Button("Next") {
@@ -312,7 +318,7 @@ private struct OnboardingReadyPage: View {
             VStack(spacing: 8) {
                 Text("Private by design")
                     .font(.title2.bold())
-                Text("Every AI model runs on your device. Your voice and data never leave your phone.")
+                Text("Every AI model runs on your device. iCloud sync is optional and private to your Apple ID — not a Voice Blogger account or server.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -399,6 +405,96 @@ private struct OnboardingReadyPage: View {
                 .controlSize(.large)
                 .frame(maxWidth: .infinity)
                 .disabled(true)
+        }
+    }
+}
+
+// MARK: - Page 5: iCloud choice
+
+private struct OnboardingICloudPage: View {
+    let onComplete: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 28) {
+                VStack(spacing: 16) {
+                    Image(systemName: "icloud.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
+                    VStack(spacing: 8) {
+                        Text("Sync across your devices")
+                            .font(.title2.bold())
+                        Text("Posts, notes, captions, your dictionary, and recordings can sync through your private iCloud to your iPhone, iPad, and Mac. Speech and writing still happen on this device. The AI models stay here.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                ICloudSyncChoiceForm(onFinished: onComplete)
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 72)
+            .padding(.bottom, 96)
+        }
+        .scrollIndicators(.hidden)
+        .frame(maxWidth: 560)
+    }
+}
+
+struct ICloudSyncChoiceForm: View {
+    let onFinished: () -> Void
+
+    @Environment(LibraryStore.self) private var library
+    @State private var message: String?
+    @State private var isWorking = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            Button("On this device only") {
+                choose(enable: false)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+            .disabled(isWorking)
+
+            Button("Sync with iCloud") {
+                choose(enable: true)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+            .disabled(isWorking)
+
+            Text("Uses your iCloud storage. If you sync, quit and reopen Voice Blogger once so it can start. You can change this later in Settings.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private func choose(enable: Bool) {
+        isWorking = true
+        message = nil
+        Task {
+            let accountAvailable = enable ? await ICloudAccount.isAvailable() : true
+            let failure = library.updateSync(enabled: enable, accountAvailable: accountAvailable)
+            isWorking = false
+            if let failure {
+                message = failure
+            } else if ICloudSyncSettings.canFinishSetup() {
+                onFinished()
+            }
         }
     }
 }

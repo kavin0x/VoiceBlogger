@@ -36,7 +36,12 @@ final class AudioRecorder: NSObject {
     // - latestAudioLevel: written from tap (background thread), read from level timer
     //   (main thread). Stale-by-one-tick reads are harmless for UI metering.
     @ObservationIgnored nonisolated(unsafe) private var outputAudioFile: AVAudioFile?
-    @ObservationIgnored nonisolated(unsafe) private var audioConverter: AVAudioConverter?
+    /// Downmix / rate match into the archive. Nil when the tap format already matches the file.
+    @ObservationIgnored nonisolated(unsafe) private var archiveConverter: AVAudioConverter?
+    /// 16 kHz mono stream for live transcription only. Never written to the archive.
+    @ObservationIgnored nonisolated(unsafe) private var whisperConverter: AVAudioConverter?
+    /// True only when the microphone tap is already Whisper's 16 kHz mono format.
+    @ObservationIgnored nonisolated(unsafe) private var whisperPassthrough = false
     @ObservationIgnored nonisolated(unsafe) private var activeWhisperKit: WhisperKit?
     @ObservationIgnored nonisolated(unsafe) private var sampleRingBuffer: SampleRingBuffer?
     @ObservationIgnored nonisolated(unsafe) private var chunkTaskIndex: Int = 0
@@ -107,47 +112,70 @@ final class AudioRecorder: NSObject {
 
         let recordingsDir = URL.recordingsDirectory
         try RecordingStorage.prepareDirectory(recordingsDir)
-        let outputURL = recordingsDir.appendingPathComponent(UUID().uuidString + ".caf")
-
-        // 16kHz mono float32 — WhisperKit's native format; no second conversion needed
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: false
-        ) else {
-            throw AudioRecorderError.recordingCouldNotStart
-        }
 
         try await activateRecordingSession()
 
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
+        // Voice processing is the speakerphone path: narrow band, noise gate, and AGC.
+        if inputNode.isVoiceProcessingEnabled {
+            try? inputNode.setVoiceProcessingEnabled(false)
+        }
         let inputFormat = inputNode.outputFormat(forBus: 0)
-
-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             Task.detached { AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
-        converter.sampleRateConverterQuality = .max
 
+        let archiveRate = RecordingAudioSettings.archiveSampleRate(matching: inputFormat.sampleRate)
+        let outputURL: URL
         let outputFile: AVAudioFile
         do {
-            outputFile = try AVAudioFile(forWriting: outputURL, settings: targetFormat.settings)
+            (outputURL, outputFile) = try RecordingAudioSettings.makeArchiveFile(
+                in: recordingsDir,
+                sampleRate: archiveRate
+            )
             RecordingStorage.protect(outputURL)
         } catch {
             Task.detached { AudioSessionManager.deactivate() }
             throw error
         }
 
+        let createdArchiveConverter = Self.makeConverter(from: inputFormat, to: outputFile.processingFormat)
+        if createdArchiveConverter == nil,
+           !RecordingAudioSettings.formatsMatch(inputFormat, outputFile.processingFormat) {
+            try? FileManager.default.removeItem(at: outputURL)
+            Task.detached { AudioSessionManager.deactivate() }
+            throw AudioRecorderError.recordingCouldNotStart
+        }
+
+        guard let whisperFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: RecordingAudioSettings.whisperSampleRate,
+            channels: 1,
+            interleaved: false
+        ) else {
+            try? FileManager.default.removeItem(at: outputURL)
+            Task.detached { AudioSessionManager.deactivate() }
+            throw AudioRecorderError.recordingCouldNotStart
+        }
+        let createdWhisperConverter = Self.makeConverter(from: inputFormat, to: whisperFormat)
+        if createdWhisperConverter == nil, !RecordingAudioSettings.formatsMatch(inputFormat, whisperFormat) {
+            try? FileManager.default.removeItem(at: outputURL)
+            Task.detached { AudioSessionManager.deactivate() }
+            throw AudioRecorderError.recordingCouldNotStart
+        }
+
         // Assign nonisolated state before engine.start() so the tap sees it immediately
-        audioConverter = converter
+        self.archiveConverter = createdArchiveConverter
+        self.whisperConverter = createdWhisperConverter
+        whisperPassthrough = createdWhisperConverter == nil
         outputAudioFile = outputFile
         activeWhisperKit = whisperKit
         speechGainController.reset()
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
-            self?.processTapBuffer(buffer, targetFormat: targetFormat)
+            self?.processTapBuffer(buffer)
         }
 
         do {
@@ -156,7 +184,11 @@ final class AudioRecorder: NSObject {
         } catch {
             inputNode.removeTap(onBus: 0)
             outputAudioFile = nil
+            self.archiveConverter = nil
+            self.whisperConverter = nil
+            whisperPassthrough = false
             activeWhisperKit = nil
+            try? FileManager.default.removeItem(at: outputURL)
             Task.detached { AudioSessionManager.deactivate() }
             throw error
         }
@@ -188,6 +220,9 @@ final class AudioRecorder: NSObject {
         engine?.stop()
         // Close the file only after the tap is removed — no more concurrent writes
         outputAudioFile = nil
+        archiveConverter = nil
+        whisperConverter = nil
+        whisperPassthrough = false
 
         isRecording = false
         audioLevels = Array(repeating: -60, count: 30)
@@ -246,6 +281,9 @@ final class AudioRecorder: NSObject {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         outputAudioFile = nil
+        archiveConverter = nil
+        whisperConverter = nil
+        whisperPassthrough = false
 
         let urlToDelete = currentAudioURL
         isRecording = false
@@ -275,52 +313,40 @@ final class AudioRecorder: NSObject {
 
     // MARK: - Tap Processing
 
-    nonisolated private func processTapBuffer(_ buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat) {
-        guard let converter = audioConverter else { return }
+    nonisolated private static func makeConverter(from source: AVAudioFormat, to target: AVAudioFormat) -> AVAudioConverter? {
+        guard !RecordingAudioSettings.formatsMatch(source, target) else { return nil }
+        guard let converter = AVAudioConverter(from: source, to: target) else { return nil }
+        converter.sampleRateConverterQuality = .max
+        return converter
+    }
 
-        let inputFormat = buffer.format
-        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
-        let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-        guard outputFrameCount > 0,
-              let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount)
-        else { return }
+    nonisolated private func processTapBuffer(_ buffer: AVAudioPCMBuffer) {
+        writeArchive(buffer)
+        publishLevel(from: buffer)
 
-        var inputConsumed = false
-        var conversionError: NSError?
-        converter.convert(to: convertedBuffer, error: &conversionError) { _, outStatus in
-            if inputConsumed {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            outStatus.pointee = .haveData
-            inputConsumed = true
-            return buffer
+        let whisperBuffer: AVAudioPCMBuffer?
+        if let whisperConverter {
+            whisperBuffer = RecordingPCMConverter.convert(buffer, using: whisperConverter)
+        } else if whisperPassthrough {
+            whisperBuffer = buffer
+        } else {
+            whisperBuffer = nil
         }
-        guard conversionError == nil, convertedBuffer.frameLength > 0 else { return }
+        guard let whisperBuffer,
+              whisperBuffer.format.commonFormat == .pcmFormatFloat32,
+              let channelData = whisperBuffer.floatChannelData?[0] else { return }
 
-        guard let channelData = convertedBuffer.floatChannelData?[0] else { return }
-        let frameCount = Int(convertedBuffer.frameLength)
+        let frameCount = Int(whisperBuffer.frameLength)
+        guard frameCount > 0 else { return }
+        var newSamples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
         var peak: Float = 0
-        for index in 0..<frameCount {
-            peak = max(peak, abs(channelData[index]))
+        for sample in newSamples {
+            peak = max(peak, abs(sample))
         }
+        // Boost only the live transcription copy. The archive was already written
+        // from the unprocessed microphone buffer so playback is not clipped.
         let gain = speechGainController.gain(forPeak: peak)
-        SpeechGainController.applyGain(gain, to: convertedBuffer)
-
-        if let outputAudioFile {
-            do {
-                try outputAudioFile.write(from: convertedBuffer)
-            } catch {
-                reportWriteFailure()
-            }
-        }
-
-        let newSamples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
-
-        // RMS -> dBFS for the waveform meter
-        let sumSquares = newSamples.reduce(0.0 as Float) { $0 + $1 * $1 }
-        let rms = sqrt(sumSquares / Float(frameCount))
-        latestAudioLevel = rms > 0 ? max(20 * log10(rms), -60) : -65
+        SpeechGainController.applyGain(gain, to: &newSamples)
 
         sampleQueue.async { [weak self] in
             guard let self else { return }
@@ -362,6 +388,36 @@ final class AudioRecorder: NSObject {
         }
     }
 
+    nonisolated private func writeArchive(_ buffer: AVAudioPCMBuffer) {
+        guard let outputAudioFile else { return }
+        do {
+            if RecordingAudioSettings.formatsMatch(buffer.format, outputAudioFile.processingFormat) {
+                try outputAudioFile.write(from: buffer)
+            } else if let archiveConverter,
+                      let archiveBuffer = RecordingPCMConverter.convert(buffer, using: archiveConverter) {
+                try outputAudioFile.write(from: archiveBuffer)
+            } else {
+                reportWriteFailure()
+            }
+        } catch {
+            reportWriteFailure()
+        }
+    }
+
+    nonisolated private func publishLevel(from buffer: AVAudioPCMBuffer) {
+        guard buffer.format.commonFormat == .pcmFormatFloat32,
+              let channel = buffer.floatChannelData?[0] else { return }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return }
+        var sumSquares: Float = 0
+        for index in 0..<frameCount {
+            let sample = channel[index]
+            sumSquares += sample * sample
+        }
+        let rms = sqrt(sumSquares / Float(frameCount))
+        latestAudioLevel = rms > 0 ? max(20 * log10(rms), -60) : -65
+    }
+
     nonisolated private func reportWriteFailure() {
         guard !didReportWriteFailure else { return }
         didReportWriteFailure = true
@@ -382,6 +438,9 @@ final class AudioRecorder: NSObject {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         outputAudioFile = nil
+        archiveConverter = nil
+        whisperConverter = nil
+        whisperPassthrough = false
 
         let filename = currentAudioURL?.lastPathComponent
         let takeDuration = duration

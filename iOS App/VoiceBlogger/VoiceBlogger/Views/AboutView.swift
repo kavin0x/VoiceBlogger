@@ -3,13 +3,18 @@ import SwiftUI
 struct AboutView: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(AppState.self) var appState
+    @Environment(AudioRecorder.self) private var audioRecorder
+    @Environment(LibraryStore.self) private var library
     @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
     @AppStorage(HapticFeedback.hapticsKey) private var hapticsEnabled = true
     @AppStorage("wifiOnlyDownloads") private var wifiOnlyDownloads = false
+    @AppStorage(ICloudSyncSettings.enabledKey) private var iCloudSyncEnabled = false
     @State private var translateToEnglish = TranscriptionSettings.translateToEnglish
     @State private var polishEnabled = TranscriptionSettings.polishTranscriptEnabled
     @State private var selectedLanguageCode: String? = TranscriptionSettings.pinnedLanguage
     @State private var showResetConfirm = false
+    @State private var showDisableICloudConfirm = false
+    @State private var iCloudMessage: String?
 
     private let githubURL = URL(string: "https://github.com/kavin0x/VoiceBlogger") ?? URL(string: "https://github.com")!
     private let version: String = {
@@ -57,6 +62,34 @@ struct AboutView: View {
                         }
                 }
 
+                Section("iCloud") {
+                    Toggle("Sync with iCloud", isOn: Binding(
+                        get: { iCloudSyncEnabled },
+                        set: { newValue in
+                            guard !audioRecorder.isRecording else { return }
+                            if newValue {
+                                enableICloudSync()
+                            } else {
+                                showDisableICloudConfirm = true
+                            }
+                        }
+                    ))
+                    .disabled(audioRecorder.isRecording)
+                    Text("Posts, notes, captions, your dictionary, and recordings sync to your iPhone, iPad, and Mac through your private iCloud. Speech, writing, and the AI models stay on this device. Quit and reopen Voice Blogger after changing this so sync can start or stop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if audioRecorder.isRecording {
+                        Text("Finish recording before changing iCloud sync.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let iCloudMessage {
+                        Text(iCloudMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
                 Section("App") {
                     Toggle("Haptic feedback", isOn: $hapticsEnabled)
                     Toggle("Wi‑Fi only downloads", isOn: $wifiOnlyDownloads)
@@ -89,6 +122,23 @@ struct AboutView: View {
             } message: {
                 Text("This deletes downloaded AI models and requires a fresh download.")
             }
+            .confirmationDialog("Turn off iCloud sync?", isPresented: $showDisableICloudConfirm, titleVisibility: .visible) {
+                Button("Turn Off Sync", role: .destructive) {
+                    let failure = library.updateSync(enabled: false, accountAvailable: true)
+                    iCloudMessage = failure
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This device keeps a local copy and stops uploading. Posts and recordings already in iCloud stay there until you delete Voice Blogger’s iCloud data in Settings.")
+            }
+        }
+    }
+
+    private func enableICloudSync() {
+        iCloudMessage = nil
+        Task {
+            let available = await ICloudAccount.isAvailable()
+            iCloudMessage = library.updateSync(enabled: true, accountAvailable: available)
         }
     }
 }

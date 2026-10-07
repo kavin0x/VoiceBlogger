@@ -810,7 +810,7 @@ final class ModelDownloadManager {
         if isStallError(error) {
             return "Download stalled. Check your connection and tap Retry."
         }
-        if isConnectionResetError(error) {
+        if isConnectionResetError(error) || LLMNetworkRetry.isIncompleteWeightError(error) {
             return "Connection was interrupted mid-download. Tap Retry to resume."
         }
         if isOfflineError(error) || isCellularBlockedError(error) {
@@ -1017,7 +1017,7 @@ final class ModelDownloadManager {
             defer { animTask.cancel() }
 
             let service: LLMService
-            if let dir = prefetchedDirectory {
+            if let dir = prefetchedDirectory, SafetensorsSnapshot.isLoadable(dir) {
                 // Files already on disk — try weight deserialization first. If the snapshot
                 // is incomplete (force-quit mid-download), fall through to a resumable
                 // network load instead of looping forever on the partial cache.
@@ -1029,10 +1029,7 @@ final class ModelDownloadManager {
                           !Task.isCancelled else { throw error }
                     service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                         group.addTask {
-                            if await DownloadNetworkPolicy.blockedByWifiOnlySetting() {
-                                throw DownloadBlockedOnCellularError()
-                            }
-                            return try await LLMService.make(progressHandler: progressHandler)
+                            try await LLMNetworkRetry.load(progressHandler: progressHandler)
                         }
                         group.addTask { [weak self] in
                             var lastSeen: Double = -1
@@ -1062,10 +1059,7 @@ final class ModelDownloadManager {
             } else {
                 service = try await withThrowingTaskGroup(of: LLMService?.self) { group in
                     group.addTask {
-                        if await DownloadNetworkPolicy.blockedByWifiOnlySetting() {
-                            throw DownloadBlockedOnCellularError()
-                        }
-                        return try await LLMService.make(progressHandler: progressHandler)
+                        try await LLMNetworkRetry.load(progressHandler: progressHandler)
                     }
                     // Watchdog: throw URLError.timedOut if download progress hasn't advanced
                     // for 90 seconds. Exits once progress reaches 0.95 (download complete,
@@ -1206,7 +1200,7 @@ final class ModelDownloadManager {
             if isLLMReady, let localDir = LLMService.localModelDirectory() {
                 return try await LLMService.makeFromDirectory(localDir)
             }
-            return try await LLMService.make(progressHandler: progressHandler)
+            return try await LLMNetworkRetry.load(progressHandler: progressHandler)
         }
         llmLoadTask = task
 

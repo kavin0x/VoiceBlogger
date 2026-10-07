@@ -8,7 +8,9 @@ struct AudioPlayerView: View {
     @State private var currentTime: TimeInterval = 0
     @State private var duration: TimeInterval = 0
     @State private var playbackError: String?
+    @State private var statusMessage: String?
     @State private var timeTimer: Timer?
+    @State private var downloadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -16,6 +18,10 @@ struct AudioPlayerView: View {
                 Text(playbackError)
                     .font(.caption)
                     .foregroundStyle(.red)
+            } else if let statusMessage {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 16) {
@@ -51,6 +57,22 @@ struct AudioPlayerView: View {
     }
 
     private func setupPlayer() {
+        switch RecordingFileAccess.readiness(at: audioURL) {
+        case .downloading:
+            audioPlayer = nil
+            playbackError = nil
+            statusMessage = "Downloading recording from iCloud…"
+            observeDownload()
+            return
+        case .missing:
+            audioPlayer = nil
+            statusMessage = nil
+            playbackError = RecordingReadiness.missing.unavailableMessage
+            return
+        case .ready:
+            statusMessage = nil
+        }
+
         do {
             try AudioSessionManager.activatePlayback()
             let player = try AVAudioPlayer(contentsOf: audioURL)
@@ -65,7 +87,27 @@ struct AudioPlayerView: View {
         }
     }
 
+    private func observeDownload() {
+        downloadTask?.cancel()
+        downloadTask = Task {
+            for _ in 0..<120 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                if RecordingFileAccess.readiness(at: audioURL) == .ready {
+                    await MainActor.run { setupPlayer() }
+                    return
+                }
+            }
+            await MainActor.run {
+                statusMessage = nil
+                playbackError = RecordingReadiness.downloading.unavailableMessage
+            }
+        }
+    }
+
     private func teardownPlayer() {
+        downloadTask?.cancel()
+        downloadTask = nil
         timeTimer?.invalidate()
         timeTimer = nil
         audioPlayer?.stop()

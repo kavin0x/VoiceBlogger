@@ -12,7 +12,7 @@ I lose ideas when I only have time to talk them out, not sit down and write. Mos
 
 | | Typical cloud tools | Voice Blogger |
 | --- | --- | --- |
-| Audio / text | Sent to a server | Stays on your device |
+| Audio / text | Sent to a server | Stays on your device unless you turn on iCloud |
 | Cost | Subscription or per-token | Free after download |
 | After setup | Needs internet | Works offline |
 | Account | Usually required | None |
@@ -38,7 +38,7 @@ I lose ideas when I only have time to talk them out, not sit down and write. Mos
 **Privacy & storage**
 
 - No account, no analytics, no telemetry
-- Recordings and posts stored locally
+- Recordings and posts stored on this device, with optional iCloud sync
 - Offline after the one-time model download
 - Open source — you can read the code
 

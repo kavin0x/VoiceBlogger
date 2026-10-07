@@ -73,6 +73,7 @@ struct BlogListView: View {
 private struct BlogPostRowView: View {
     let post: BlogPost
     let automaticDetectionEnabled: Bool
+    @State private var audioStatus: RecordingReadiness = .ready
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -96,6 +97,11 @@ private struct BlogPostRowView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
+                if audioStatus == .downloading {
+                    Label("Downloading audio", systemImage: "icloud.and.arrow.down")
+                        .font(.caption2)
+                        .foregroundStyle(.blue)
+                }
                 if post.transcriptionState == .untranscribed {
                     Label("Untranscribed", systemImage: "waveform.slash")
                         .font(.caption2)
@@ -124,6 +130,27 @@ private struct BlogPostRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .task(id: post.audioFilename) {
+            await refreshAudioStatus()
+        }
+    }
+
+    private func refreshAudioStatus() async {
+        guard let url = post.audioFileURL else {
+            audioStatus = .missing
+            return
+        }
+        var status = RecordingFileAccess.readiness(at: url)
+        audioStatus = status
+        guard status == .downloading else { return }
+
+        for _ in 0..<120 {
+            try? await Task.sleep(for: .seconds(1))
+            if Task.isCancelled { return }
+            status = RecordingFileAccess.readiness(at: url)
+            audioStatus = status
+            if status != .downloading { return }
+        }
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

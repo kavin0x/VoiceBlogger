@@ -28,7 +28,9 @@ final class VoiceBloggerUITestsLaunchTests: XCTestCase {
         app.launchArguments = ["-onboardingComplete", "NO"]
         app.launch()
 
-        app.buttons["Skip"].tap()
+        app.buttons["Next"].tap()
+        app.buttons["Next"].tap()
+        app.buttons["Next"].tap()
         XCTAssertTrue(app.staticTexts["Private by design"].waitForExistence(timeout: 5))
         addScreenshot(app, name: "Onboarding - Privacy & Download")
     }
@@ -36,7 +38,7 @@ final class VoiceBloggerUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunchModelDownloadScreen() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Setting Up VoiceBlogger"].waitForExistence(timeout: 5))
@@ -46,7 +48,7 @@ final class VoiceBloggerUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunchRecordingScreen() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launchEnvironment = ["UI_TESTING": "1"]
         app.launch()
 
@@ -57,7 +59,7 @@ final class VoiceBloggerUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunchHistoryEmptyScreen() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launchEnvironment = ["UI_TESTING": "1"]
         app.launch()
 
@@ -69,7 +71,7 @@ final class VoiceBloggerUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunchAboutScreen() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-onboardingComplete", "YES"]
+        app.launchArguments = ["-onboardingComplete", "YES", "-iCloudSyncChoiceMade", "YES"]
         app.launchEnvironment = ["UI_TESTING": "1"]
         app.launch()
 
