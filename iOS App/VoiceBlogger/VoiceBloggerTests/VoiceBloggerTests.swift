@@ -916,4 +916,16 @@ struct VoiceBloggerTests {
         #expect(!AppStage.transcribing(post: post).keepsWritingAssistantLoaded)
     }
 
+    @Test func blogOverflowMenuKeepsATappableLabel() {
+        #expect(BlogOverflowMenu.accessibilityLabel == "More options")
+        #expect(BlogOverflowMenu.systemImage == "ellipsis.circle")
+    }
+
+    @Test func blogOverflowMenuShowsContentActionsWhenIdleWithText() {
+        #expect(BlogOverflowMenu.includesContentActions(displayText: "# Hello", isGenerating: false))
+        #expect(!BlogOverflowMenu.includesContentActions(displayText: "# Hello", isGenerating: true))
+        #expect(!BlogOverflowMenu.includesContentActions(displayText: "", isGenerating: false))
+        #expect(!BlogOverflowMenu.includesContentActions(displayText: "", isGenerating: true))
+    }
+
 }

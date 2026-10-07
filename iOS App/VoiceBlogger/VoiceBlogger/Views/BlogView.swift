@@ -123,15 +123,20 @@ struct BlogView: View {
                         appState.navigateTo(.recording)
                     }
                 }
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if isEditing {
+                if isEditing {
+                    ToolbarItem(placement: .confirmationAction) {
                         Button("Done") {
                             commitEdits()
                         }
                         .fontWeight(.semibold)
-                    } else {
+                    }
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
                         Menu {
-                            if !displayText.isEmpty && !isGenerating {
+                            if BlogOverflowMenu.includesContentActions(
+                                displayText: displayText,
+                                isGenerating: isGenerating
+                            ) {
                                 Button {
                                     editableText = displayText
                                     isEditing = true
@@ -170,10 +175,8 @@ struct BlogView: View {
                                 Label("History", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                             }
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Label(BlogOverflowMenu.accessibilityLabel, systemImage: BlogOverflowMenu.systemImage)
                         }
-                        .accessibilityLabel("More options")
-
                     }
                 }
             }
@@ -299,5 +302,14 @@ struct BlogView: View {
             downloadManager.releaseLLMService()
             generationError = error.localizedDescription
         }
+    }
+}
+
+enum BlogOverflowMenu {
+    static let accessibilityLabel = "More options"
+    static let systemImage = "ellipsis.circle"
+
+    static func includesContentActions(displayText: String, isGenerating: Bool) -> Bool {
+        !displayText.isEmpty && !isGenerating
     }
 }
