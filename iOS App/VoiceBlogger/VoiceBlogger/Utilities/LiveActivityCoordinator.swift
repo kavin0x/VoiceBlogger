@@ -53,7 +53,7 @@ final class LiveActivityCoordinator {
 
     /// Copy for the activity that replaces the live recording. An unsaved take must not
     /// tell the person to transcribe audio that was discarded or never written into the library.
-    static func recordingEndContent(saved: Bool) -> (title: String, detail: String) {
+    nonisolated static func recordingEndContent(saved: Bool) -> (title: String, detail: String) {
         if saved {
             return ("Recording Saved", "Ready to transcribe")
         }

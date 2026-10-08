@@ -534,7 +534,9 @@ final class AudioRecorder: NSObject {
             promptTokens: promptTokens
         )
         do {
-            let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
+            let results = try await OffMain.run {
+                try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
+            }
             let rawText = results.map(\.text).joined(separator: " ")
             return TranscriptionService.filterTokens(rawText)
         } catch {

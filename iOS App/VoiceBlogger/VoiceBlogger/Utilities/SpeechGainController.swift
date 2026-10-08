@@ -23,7 +23,11 @@ nonisolated final class SpeechGainController: @unchecked Sendable {
         guard peak >= Self.minimumPeak else { return envelope }
 
         let desired = min(Self.targetPeak / peak, Self.maxGain)
-        if desired > envelope {
+        // A loud buffer after quiet speech must not keep the boosted envelope.
+        // Slow release would multiply this peak past full scale and clip the transcript copy.
+        if peak * envelope > 1 {
+            envelope = desired
+        } else if desired > envelope {
             envelope = 0.35 * envelope + 0.65 * desired
         } else {
             envelope = 0.9 * envelope + 0.1 * desired

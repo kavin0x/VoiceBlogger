@@ -5,7 +5,7 @@ struct BlogListView: View {
     @Environment(AppState.self) var appState
     @Query(sort: \BlogPost.createdAt, order: .reverse) private var posts: [BlogPost]
     @Environment(\.modelContext) private var modelContext
-    @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
+    @AppStorage(ContentKindDetectionSettings.enabledKey) private var automaticContentKindDetectionEnabled = true
     @State private var searchText = ""
 
     private var filteredPosts: [BlogPost] {

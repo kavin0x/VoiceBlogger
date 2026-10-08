@@ -5,7 +5,7 @@ struct AboutView: View {
     @Environment(AppState.self) var appState
     @Environment(AudioRecorder.self) private var audioRecorder
     @Environment(LibraryStore.self) private var library
-    @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
+    @AppStorage(ContentKindDetectionSettings.enabledKey) private var automaticContentKindDetectionEnabled = true
     @AppStorage(HapticFeedback.hapticsKey) private var hapticsEnabled = true
     @AppStorage("wifiOnlyDownloads") private var wifiOnlyDownloads = false
     @AppStorage(ICloudSyncSettings.enabledKey) private var iCloudSyncEnabled = false
@@ -32,9 +32,9 @@ struct AboutView: View {
                     LabeledContent("Model quality", value: ModelQualityLevel.current.displayName)
                 }
 
-                Section("Beta (may not work as expected or decrease quality)") {
+                Section("Writing") {
                     Toggle("Automatic content type detection", isOn: $automaticContentKindDetectionEnabled)
-                    Text("When enabled, transcripts are labeled as blog posts, meeting notes, or notes based on automatic classification.")
+                    Text("On by default. Transcripts are classified as a blog post, meeting notes, or notes. Turn this off to always generate a blog post.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

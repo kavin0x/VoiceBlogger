@@ -37,17 +37,17 @@ struct VoiceBloggerTests {
         #expect(!BlogGenerationHandoff.canGenerateBlog(from: "Transcript", isBusy: true))
     }
 
-    @Test func contentKindDefaultsToBlogPostWhenBetaDetectionIsOff() {
+    @Test func contentKindStaysBlogPostWhenDetectionIsOff() {
         let transcript = """
         Product sync meeting. Agenda was onboarding and pricing.
         We discussed launch blockers and decided to keep the beta invite-only.
         Action items: Maya follow up with legal by Friday.
         """
 
-        #expect(BlogGenerationHandoff.contentKind(for: transcript) == .blogPost)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: false) == .blogPost)
     }
 
-    @Test func contentKindDetectsMeetingNotesWhenBetaDetectionIsOn() {
+    @Test func contentKindDetectsMeetingNotesWhenDetectionIsOn() {
         let transcript = """
         Product sync meeting. Agenda was onboarding and pricing.
         We discussed launch blockers and decided to keep the beta invite-only.
@@ -98,12 +98,73 @@ struct VoiceBloggerTests {
         #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .notes)
     }
 
-    @Test func contentKindDefaultsArticleLikeTranscriptToBlogPost() {
+    @Test func contentKindKeepsReflectiveEssayAsBlogPost() {
         let transcript = """
         I used to think consistency meant doing the exact same thing every day, but I learned that consistency is really about returning to the work after interruptions. That lesson changed how I plan creative projects and how I talk about progress with readers.
         """
 
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .blogPost)
+    }
+
+    @Test func contentKindKeepsEssayThatMentionsAMeetingAsBlogPost() {
+        let transcript = """
+        I went into that meeting expecting a fight, and I learned the opposite. The story I tell readers now is about listening for five minutes before I answer.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .blogPost)
+    }
+
+    @Test func contentKindDetectsStandupAsMeetingNotes() {
+        let transcript = """
+        Standup. Yesterday I finished onboarding. Blocker is legal review.
+        Maya owns the checklist. Next steps: follow up with support on Monday.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .meetingNotes)
+    }
+
+    @Test func contentKindDetectsNamedSpeakersAsMeetingNotes() {
+        let transcript = """
+        Alex: Let's lock the launch date.
+        Priya: I can own the checklist if we decide Friday.
+        Alex: Agreed. Action item is Priya sends the invite today.
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .meetingNotes)
+    }
+
+    @Test func contentKindDetectsNumberedChecklistAsNotes() {
+        let transcript = """
+        1. Call the dentist
+        2. Pick up coffee filters
+        3. Email Sam the invoice
+        """
+
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, automaticDetectionEnabled: true) == .notes)
+    }
+
+    @Test func contentKindOmitsDetectionAndStaysBlogPost() {
+        let transcript = """
+        Standup. Yesterday I finished onboarding. Blocker is legal review.
+        Maya owns the checklist. Next steps: follow up with support on Monday.
+        """
+
         #expect(BlogGenerationHandoff.contentKind(for: transcript) == .blogPost)
+        #expect(BlogGenerationHandoff.contentKind(for: transcript, speakerCount: 2) == .blogPost)
+    }
+
+    @Test func contentKindPromotionTurnsEveryoneOnOnce() {
+        let name = "content-kind-detection-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+
+        defaults.set(false, forKey: ContentKindDetectionSettings.enabledKey)
+        ContentKindDetectionSettings.promoteToDefaultOnIfNeeded(defaults: defaults)
+        #expect(defaults.bool(forKey: ContentKindDetectionSettings.enabledKey))
+
+        defaults.set(false, forKey: ContentKindDetectionSettings.enabledKey)
+        ContentKindDetectionSettings.promoteToDefaultOnIfNeeded(defaults: defaults)
+        #expect(!defaults.bool(forKey: ContentKindDetectionSettings.enabledKey))
     }
 
     @Test func promptBuilderDefaultBlogPromptAllowsCommonSenseFormatSelection() {
@@ -857,9 +918,10 @@ struct VoiceBloggerTests {
     @Test func polishRejectsATruncatedLongTranscript() {
         let original = String(repeating: "We shipped the beta after the review. ", count: 80)
         let truncated = String(original.prefix(400))
+        let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(TranscriptPolishPolicy.looksTruncated(original: original, polished: truncated, maxTokens: 800))
         #expect(
-            TranscriptPolishPolicy.acceptedText(original: original, polished: truncated, maxTokens: 800) == original
+            TranscriptPolishPolicy.acceptedText(original: original, polished: truncated, maxTokens: 800) == trimmed
         )
     }
 
@@ -869,6 +931,19 @@ struct VoiceBloggerTests {
         #expect(!TranscriptPolishPolicy.looksTruncated(original: original, polished: polished, maxTokens: 800))
         #expect(
             TranscriptPolishPolicy.acceptedText(original: original, polished: polished, maxTokens: 800) == polished
+        )
+    }
+
+    @Test func polishFallbackReturnsTrimmedOriginal() {
+        let padded = "\n\n  \(String(repeating: "We shipped the beta after the review. ", count: 80))  \n"
+        let trimmed = padded.trimmingCharacters(in: .whitespacesAndNewlines)
+        let truncated = String(trimmed.prefix(400))
+
+        #expect(
+            TranscriptPolishPolicy.acceptedText(original: padded, polished: "   \n", maxTokens: 800) == trimmed
+        )
+        #expect(
+            TranscriptPolishPolicy.acceptedText(original: padded, polished: truncated, maxTokens: 800) == trimmed
         )
     }
 
@@ -1128,6 +1203,19 @@ struct VoiceBloggerTests {
         try Self.safetensors(payloadBytes: 4).write(to: directory.appendingPathComponent("model.safetensors"))
         try Data("{}".utf8).write(to: directory.appendingPathComponent("model.safetensors.index.json"))
         #expect(!SafetensorsSnapshot.isLoadable(directory))
+    }
+
+    @Test func streamingTranscriptKeepsEarlierWindows() {
+        let assembler = StreamingTranscriptAssembler()
+        #expect(assembler.apply(windowId: 0, text: "Hello") == "Hello")
+        #expect(assembler.apply(windowId: 0, text: "Hello there") == "Hello there")
+        #expect(assembler.apply(windowId: 1, text: "Next line") == "Hello there Next line")
+        #expect(assembler.apply(windowId: 0, text: "   ") == "Hello there Next line")
+    }
+
+    @Test func modelWorkLeavesTheMainThread() async {
+        let stayedOnMain = await OffMain.leavesMainThread()
+        #expect(!stayedOnMain)
     }
 
     @Test func unsavedRecordingActivityDoesNotPromiseATranscript() {

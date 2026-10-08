@@ -31,7 +31,7 @@ struct SpeakerAnnotatedTranscript: Sendable {
 
 // WhisperKit is open class without Sendable; @unchecked is safe here because
 // WhisperKit is only ever accessed from a single Task at a time in this service.
-final class TranscriptionService: @unchecked Sendable {
+nonisolated final class TranscriptionService: @unchecked Sendable {
     private var whisperKit: WhisperKit?
 
     init(whisperKit: WhisperKit) {
@@ -143,12 +143,14 @@ final class TranscriptionService: @unchecked Sendable {
         }
         defer { whisperKit.transcriptionStateCallback = previousStateCallback }
 
-        let results = try await transcribeWithStallWatchdog(
-            whisperKit: whisperKit,
-            audioPath: audioURL.path,
-            decodeOptions: options,
-            onPartial: onPartial
-        )
+        let results = try await OffMain.run { [whisperKit] in
+            try await Self.transcribeWithStallWatchdog(
+                whisperKit: whisperKit,
+                audioPath: audioURL.path,
+                decodeOptions: options,
+                onPartial: onPartial
+            )
+        }
         let rawJoined = results.map { $0.text }.joined(separator: " ")
         let finalText = Self.filterTokens(rawJoined)
         // If annotation filtering removed everything (e.g. Whisper tagged the entire
@@ -308,7 +310,7 @@ final class TranscriptionService: @unchecked Sendable {
 
     private static let stallTimeoutSeconds: TimeInterval = 120
 
-    private final class StallTracker: @unchecked Sendable {
+    nonisolated private final class StallTracker: @unchecked Sendable {
         private let lock = NSLock()
         private var lastProgressAt = ContinuousClock.now
 
@@ -326,13 +328,14 @@ final class TranscriptionService: @unchecked Sendable {
         }
     }
 
-    private func transcribeWithStallWatchdog(
+    private static func transcribeWithStallWatchdog(
         whisperKit: WhisperKit,
         audioPath: String,
         decodeOptions: DecodingOptions,
         onPartial: (@Sendable (String) -> Void)?
     ) async throws -> [TranscriptionResult] {
         let tracker = StallTracker()
+        let assembler = StreamingTranscriptAssembler()
 
         return try await withThrowingTaskGroup(of: [TranscriptionResult].self) { group in
             group.addTask {
@@ -344,8 +347,9 @@ final class TranscriptionService: @unchecked Sendable {
                             tracker.bump()
                         }
                         let filtered = Self.filterTokens(progress.text)
-                        if !filtered.isEmpty {
-                            onPartial?(filtered)
+                        let streamed = assembler.apply(windowId: progress.windowId, text: filtered)
+                        if !streamed.isEmpty {
+                            onPartial?(streamed)
                         }
                         return true
                     }
@@ -495,7 +499,7 @@ enum TranscriptionError: LocalizedError {
 /// WhisperKit loads MelSpectrogram, TextDecoder, and AudioEncoder one after another.
 /// On large models that roughly triples cold-load time. This subclass loads all three
 /// CoreML bundles concurrently (after compilation has been cached via prewarm).
-final class ParallelWhisperKit: WhisperKit {
+nonisolated final class ParallelWhisperKit: WhisperKit {
     private var coreMLComponentsReady: Bool {
         [featureExtractor, audioEncoder, textDecoder].allSatisfy {
             ($0 as? WhisperMLModel)?.model != nil
@@ -567,9 +571,9 @@ final class ParallelWhisperKit: WhisperKit {
     }
 }
 
-enum WhisperKitLoader {
+nonisolated enum WhisperKitLoader {
     /// Config that resolves paths on disk without eagerly loading weights during init.
-    static func localConfig(modelFolder: URL?) -> WhisperKitConfig {
+    nonisolated static func localConfig(modelFolder: URL?) -> WhisperKitConfig {
         #if DEBUG
         WhisperKitConfig(
             model: modelFolder == nil ? ModelIDs.whisper : nil,
@@ -591,11 +595,13 @@ enum WhisperKitLoader {
         #endif
     }
 
-    static func make(from modelFolder: URL?) async throws -> ParallelWhisperKit {
-        try await ModelLoadDiagnostics.timed("WhisperKit load") {
-            let kit = try await ParallelWhisperKit(localConfig(modelFolder: modelFolder))
-            try await kit.loadModels()
-            return kit
+    nonisolated static func make(from modelFolder: URL?) async throws -> ParallelWhisperKit {
+        try await OffMain.run {
+            try await ModelLoadDiagnostics.timed("WhisperKit load") {
+                let kit = try await ParallelWhisperKit(localConfig(modelFolder: modelFolder))
+                try await kit.loadModels()
+                return kit
+            }
         }
     }
 }

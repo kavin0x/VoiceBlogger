@@ -1,7 +1,17 @@
 import Foundation
 
-enum BetaFeatureSettings {
-    static let automaticContentKindDetectionKey = "betaAutomaticContentKindDetection"
+enum ContentKindDetectionSettings: Sendable {
+    /// Same key the beta toggle used, so existing installs keep one preference.
+    nonisolated static let enabledKey = "betaAutomaticContentKindDetection"
+    /// Written once when detection leaves beta. That pass turns it on for everyone.
+    /// A later manual off is left alone.
+    nonisolated static let promotedOnKey = "automaticContentKindDetectionPromotedOn"
+
+    nonisolated static func promoteToDefaultOnIfNeeded(defaults: UserDefaults = .standard) {
+        guard !defaults.bool(forKey: promotedOnKey) else { return }
+        defaults.set(true, forKey: enabledKey)
+        defaults.set(true, forKey: promotedOnKey)
+    }
 }
 
 enum GeneratedContentKind: String, CaseIterable, Sendable {
@@ -72,98 +82,122 @@ enum GeneratedContentKind: String, CaseIterable, Sendable {
     ///   - speakerCount: Reserved for future diarization-backed speaker recognition.
     ///                   Heuristic speaker counts are ignored because they can misattribute speech.
     nonisolated static func detect(from transcript: String, speakerCount: Int = 0) -> GeneratedContentKind {
-        let rawLines = transcript
-            .lowercased()
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let normalized = transcript
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9#\n:.,!?@/ -]", with: " ", options: .regularExpression)
-        let words = normalized.split { !$0.isLetter && !$0.isNumber }.map(String.init)
-        let wordSet = Set(words)
-        let wordCount = words.count
-        let lines = normalized
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        var meetingScore = 0
-        var notesScore = 0
-        var blogScore = 0
-
         _ = speakerCount
 
-        let meetingPhrases = [
-            "meeting", "agenda", "attendees", "action item", "action items", "follow up", "follow-up",
-            "next steps", "decision", "decisions", "deadline", "owner", "assigned", "sync", "standup",
-            "roadmap", "stakeholder", "blocker", "blockers", "minutes", "recap"
-        ]
-        for phrase in meetingPhrases where normalized.contains(phrase) {
-            meetingScore += phrase.contains(" ") || phrase.contains("-") ? 3 : 2
+        let rawLines = transcript
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let collapsed = transcript
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9#\n:.,!?'@/ -]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = collapsed.split(separator: " ").map(String.init)
+        guard !words.isEmpty else { return .blogPost }
+
+        let bulletCount = rawLines.filter(isBulletLine).count
+        let speakerLabelCount = rawLines.filter(isSpeakerLabelLine).count
+        var meeting = 0
+        var notes = 0
+        var blog = 0
+
+        func add(_ phrase: String, _ weight: Int, to score: inout Int) {
+            if containsPhrase(phrase, in: collapsed) { score += weight }
         }
 
-        if normalized.contains("we discussed") || normalized.contains("we decided") || normalized.contains("we agreed") {
-            meetingScore += 4
+        add("action item", 5, to: &meeting)
+        add("action items", 5, to: &meeting)
+        add("we decided", 4, to: &meeting)
+        add("we agreed", 4, to: &meeting)
+        add("we discussed", 4, to: &meeting)
+        add("next steps", 3, to: &meeting)
+        add("follow up with", 3, to: &meeting)
+        add("follow-up with", 3, to: &meeting)
+        add("circle back", 3, to: &meeting)
+        add("agenda", 3, to: &meeting)
+        add("attendees", 4, to: &meeting)
+        add("standup", 3, to: &meeting)
+        add("stand-up", 3, to: &meeting)
+        add("meeting notes", 4, to: &meeting)
+        add("open question", 2, to: &meeting)
+        if speakerLabelCount >= 2 { meeting += 4 }
+        if rawLines.contains(where: {
+            let line = $0.lowercased()
+            return line.hasPrefix("action") || line.hasPrefix("agenda") || line.hasPrefix("attendees")
+        }) {
+            meeting += 3
         }
-        if normalized.contains("follow up with") || normalized.contains("circle back") {
-            meetingScore += 3
+        if collapsed.range(of: #"\b[a-z]+ owns\b"#, options: .regularExpression) != nil {
+            meeting += 2
         }
-        if rawLines.contains(where: { $0.range(of: "^[a-z][a-z0-9 ._-]{1,30}:", options: .regularExpression) != nil }) {
-            meetingScore += 2
+        let weakMeetingHits = ["meeting", "blocker", "blockers", "stakeholder", "stakeholders", "roadmap", "sync"]
+            .filter { containsPhrase($0, in: collapsed) }
+            .count
+        if weakMeetingHits >= 2 { meeting += 2 }
+
+        add("remember to", 5, to: &notes)
+        add("don't forget", 5, to: &notes)
+        add("do not forget", 5, to: &notes)
+        add("todo", 4, to: &notes)
+        add("to-do", 4, to: &notes)
+        add("to do list", 4, to: &notes)
+        add("reminder", 4, to: &notes)
+        add("grocery list", 4, to: &notes)
+        add("shopping list", 4, to: &notes)
+        add("packing list", 4, to: &notes)
+        add("checklist", 3, to: &notes)
+        if bulletCount >= 2 {
+            notes += 5
+        } else if bulletCount == 1 {
+            notes += 2
         }
-        if rawLines.contains(where: { $0.hasPrefix("action") || $0.hasPrefix("agenda") || $0.hasPrefix("attendees") }) {
-            meetingScore += 3
+        if rawLines.count >= 3 && bulletCount >= max(2, rawLines.count / 2) {
+            notes += 3
+        }
+        if words.count <= 24 && (notes > 0 || bulletCount > 0) {
+            notes += 2
         }
 
-        let noteMarkers: [(marker: String, score: Int)] = [
-            ("remember", 3), ("todo", 3), ("to do", 3), ("reminder", 3),
-            ("note", 1), ("notes", 1), ("idea", 1), ("ideas", 1),
-            ("list", 1), ("draft", 1), ("brainstorm", 1)
-        ]
-        for item in noteMarkers where normalized.contains(item.marker) {
-            notesScore += item.score
-        }
+        add("blog post", 4, to: &blog)
+        add("newsletter", 3, to: &blog)
+        add("readers", 2, to: &blog)
+        if isReflectiveProse(collapsed) { blog += 4 }
+        if words.count >= 80 && bulletCount == 0 && speakerLabelCount < 2 { blog += 2 }
+        let sentences = collapsed.split { ".!?".contains($0) }.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        if sentences.count >= 3 && words.count >= 50 && bulletCount == 0 { blog += 2 }
 
-        let bulletLikeLineCount = rawLines.filter { line in
-            line.hasPrefix("-") ||
-            line.hasPrefix("*") ||
-            line.unicodeScalars.first?.value == 0x2022 ||
-            line.range(of: "^\\d+[.)]", options: .regularExpression) != nil
-        }.count
-        if bulletLikeLineCount >= 2 {
-            notesScore += 4
-        } else if bulletLikeLineCount == 1 {
-            notesScore += 2
-        }
-        if wordCount < 120 {
-            notesScore += 2
-        }
-        if lines.count >= 3 && bulletLikeLineCount >= max(2, lines.count / 3) {
-            notesScore += 3
-        }
-
-        let blogPhrases = [
-            "blog post", "article", "essay", "newsletter", "publish", "audience", "readers", "story",
-            "hook", "introduction", "conclusion", "share this", "personal story", "lesson learned"
-        ]
-        for phrase in blogPhrases where normalized.contains(phrase) {
-            blogScore += phrase.contains(" ") ? 3 : 2
-        }
-        if wordSet.contains("i") && (wordSet.contains("think") || wordSet.contains("learned") || wordSet.contains("believe")) {
-            blogScore += 2
-        }
-        if wordCount >= 350 {
-            blogScore += 2
-        }
-
-        if meetingScore >= max(notesScore + 2, blogScore + 2), meetingScore >= 5 {
+        if meeting >= 6 && meeting >= notes + 1 && meeting >= blog {
             return .meetingNotes
         }
-        if notesScore >= blogScore + 2, notesScore >= 4 {
+        if notes >= 4 && notes >= blog && meeting < 6 {
+            return .notes
+        }
+        if bulletCount >= 2 && notes > blog && meeting < 6 {
             return .notes
         }
         return .blogPost
+    }
+
+    private static func containsPhrase(_ phrase: String, in text: String) -> Bool {
+        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: phrase))\\b"
+        return text.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private static func isBulletLine(_ line: String) -> Bool {
+        if line.hasPrefix("-") || line.hasPrefix("*") || line.hasPrefix("•") { return true }
+        return line.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) != nil
+    }
+
+    private static func isSpeakerLabelLine(_ line: String) -> Bool {
+        line.range(of: #"^[A-Za-z][A-Za-z0-9 .'-]{0,40}:\s+\S"#, options: .regularExpression) != nil
+    }
+
+    private static func isReflectiveProse(_ text: String) -> Bool {
+        guard containsPhrase("i", in: text) else { return false }
+        return ["think", "learned", "believe", "realized", "realised", "noticed", "felt"].contains {
+            containsPhrase($0, in: text)
+        }
     }
 }
 

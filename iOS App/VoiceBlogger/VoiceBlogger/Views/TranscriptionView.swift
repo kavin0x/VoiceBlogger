@@ -23,31 +23,25 @@ struct TranscriptionView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if isTranscribing {
-                    Section {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Transcribing…")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } else if isRefining {
+                if isTranscribing || isRefining {
                     Section {
                         HStack(spacing: 8) {
                             ProgressView()
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Refining transcript…")
+                                Text(isRefining ? "Refining transcript…" : "Transcribing…")
                                     .foregroundStyle(.secondary)
-                                Text("Preview shown below — final pass runs on the full recording. Edits in the transcript stay put.")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
+                                if isRefining {
+                                    Text("Preview updates here. Edits in the transcript stay put.")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                         }
-                        if !refinePreview.isEmpty {
-                            Text(refinePreview)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(6)
+                        if !streamingTranscript.isEmpty {
+                            Text(streamingTranscript)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 } else if let error {
@@ -92,39 +86,21 @@ struct TranscriptionView: View {
                     }
                 }
 
-                if !post.transcript.isEmpty || !editableTranscript.isEmpty {
-                    Section {
-                        if recorder.isLivePreview || isRefining {
-                            Label("Preview", systemImage: "text.line.first.and.arrowtriangle.forward")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                if !isTranscribing && (!post.transcript.isEmpty || !editableTranscript.isEmpty) {
+                    Section("Transcript") {
                         if let detectedLanguage {
                             Label("Detected: \(TranscriptionSettings.languageLabel(for: detectedLanguage))", systemImage: "globe")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    }
+                        TextEditor(text: $editableTranscript)
+                            .font(.body)
+                            .frame(minHeight: 240)
+                            .accessibilityLabel("Editable transcript")
 
-                    Section("Transcript") {
-                        if isTranscribing {
-                            ScrollView {
-                                Text(post.transcript)
-                                    .font(.body)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(maxHeight: 300)
-                        } else {
-                            TextEditor(text: $editableTranscript)
-                                .font(.body)
-                                .frame(minHeight: 240)
-                                .accessibilityLabel("Editable transcript")
-
-                            if editableTranscript != post.transcript {
-                                Button("Save Transcript") {
-                                    saveEditedTranscript()
-                                }
+                        if editableTranscript != post.transcript {
+                            Button("Save Transcript") {
+                                saveEditedTranscript()
                             }
                         }
                     }
@@ -401,6 +377,10 @@ struct TranscriptionView: View {
 
         saveEditedTranscript()
         appState.navigateTo(.preparingBlog(postID: post.id))
+    }
+
+    private var streamingTranscript: String {
+        isRefining ? refinePreview : post.transcript
     }
 
     private var availableAudioURL: URL? {

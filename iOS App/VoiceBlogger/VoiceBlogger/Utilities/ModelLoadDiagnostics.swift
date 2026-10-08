@@ -2,13 +2,13 @@ import Foundation
 import os
 
 /// DEBUG-only timing logs for on-device model loading. Filter Xcode Console with `ModelLoad`.
-enum ModelLoadDiagnostics {
+nonisolated enum ModelLoadDiagnostics {
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "VoiceBlogger",
         category: "ModelLoad"
     )
 
-    static func timed<T>(_ operation: String, _ work: () async throws -> T) async rethrows -> T {
+    nonisolated static func timed<T>(_ operation: String, _ work: () async throws -> T) async rethrows -> T {
         #if DEBUG
         let start = ContinuousClock.now
         do {

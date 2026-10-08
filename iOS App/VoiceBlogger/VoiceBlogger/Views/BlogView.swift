@@ -7,7 +7,7 @@ struct BlogView: View {
     @Environment(ModelDownloadManager.self) var downloadManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage(BetaFeatureSettings.automaticContentKindDetectionKey) private var automaticContentKindDetectionEnabled = false
+    @AppStorage(ContentKindDetectionSettings.enabledKey) private var automaticContentKindDetectionEnabled = true
 
     @State private var streamedText = ""
     @State private var isGenerating = false

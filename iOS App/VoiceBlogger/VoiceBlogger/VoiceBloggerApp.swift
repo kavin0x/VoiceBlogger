@@ -7,6 +7,7 @@ struct VoiceBloggerApp: App {
         // Runs after stored properties, and again is a no-op if the load-time
         // constructor already installed the Metal name guard.
         MLXMetalStartup.installIfNeeded()
+        ContentKindDetectionSettings.promoteToDefaultOnIfNeeded()
     }
     @State private var appState = AppState()
     @State private var audioRecorder = AudioRecorder()

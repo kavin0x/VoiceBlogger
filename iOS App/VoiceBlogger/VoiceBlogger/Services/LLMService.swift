@@ -69,7 +69,7 @@ private final class GenerationCancellationBox: @unchecked Sendable {
     }
 }
 
-final class LLMService: Sendable {
+nonisolated final class LLMService: Sendable {
     private let container: ModelContainer
 
     init(container: ModelContainer) {
@@ -77,19 +77,21 @@ final class LLMService: Sendable {
         MLX.Memory.cacheLimit = ModelQualityLevel.current.mlxCacheLimitBytes(on: DeviceRAMTier.current)
     }
 
-    static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
-        try await ModelLoadDiagnostics.timed("LLM load") {
-            let c = try await LLMModelFactory.shared.loadContainer(
-                from: HubDownloader(),
-                using: HuggingFaceTokenizerLoader(),
-                configuration: ModelConfiguration(id: ModelIDs.llm),
-                progressHandler: { progress in
-                    progressHandler?(progress)
-                }
-            )
-            let service = LLMService(container: c)
-            try await service.validatePromptPipeline()
-            return service
+    nonisolated static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
+        try await OffMain.run {
+            try await ModelLoadDiagnostics.timed("LLM load") {
+                let c = try await LLMModelFactory.shared.loadContainer(
+                    from: HubDownloader(),
+                    using: HuggingFaceTokenizerLoader(),
+                    configuration: ModelConfiguration(id: ModelIDs.llm),
+                    progressHandler: { progress in
+                        progressHandler?(progress)
+                    }
+                )
+                let service = LLMService(container: c)
+                try await service.validatePromptPipeline()
+                return service
+            }
         }
     }
 
@@ -142,18 +144,20 @@ final class LLMService: Sendable {
 
     // Load from a directory that was already downloaded (e.g. by a prefetch task).
     // Skips network I/O — goes straight to weight deserialization.
-    static func makeFromDirectory(_ directory: URL) async throws -> LLMService {
+    nonisolated static func makeFromDirectory(_ directory: URL) async throws -> LLMService {
         guard SafetensorsSnapshot.isLoadable(directory) else {
             throw ModelValidationError.missingModelArtifacts
         }
-        return try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
-            let c = try await LLMModelFactory.shared.loadContainer(
-                from: directory,
-                using: HuggingFaceTokenizerLoader()
-            )
-            let service = LLMService(container: c)
-            try await service.validatePromptPipeline()
-            return service
+        return try await OffMain.run {
+            try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
+                let c = try await LLMModelFactory.shared.loadContainer(
+                    from: directory,
+                    using: HuggingFaceTokenizerLoader()
+                )
+                let service = LLMService(container: c)
+                try await service.validatePromptPipeline()
+                return service
+            }
         }
     }
 

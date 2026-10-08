@@ -502,7 +502,7 @@ final class ModelDownloadManager {
 
         releaseLLMService()
         let localDir = Self.localWhisperModelDirectory()
-        let task = Task { [weak self] in
+        let task = Task.detached { [weak self] in
             guard let self else { return }
             guard !Task.isCancelled else { return }
             let kit: WhisperKit
@@ -517,7 +517,7 @@ final class ModelDownloadManager {
                     ModelIntegrityChecker.verify(directory: $0, storedKey: kWhisperFingerprintKey)
                 } ?? false
                 if ModelLoadFailurePolicy.shouldInvalidate(error, integrityMatches: integrityMatches) {
-                    self.markWhisperLoadFailure(error)
+                    await self.markWhisperLoadFailure(error)
                 }
                 return
             }
@@ -874,7 +874,7 @@ final class ModelDownloadManager {
                     }
                 }
                 defer { progressTask.cancel() }
-                let kit = try await WhisperKit(config)
+                let kit = try await OffMain.run { try await WhisperKit(config) }
                 guard downloadRunID == runID, !Task.isCancelled else {
                     await kit.unloadModels()
                     return
@@ -912,7 +912,7 @@ final class ModelDownloadManager {
             try await ensureLoadHeadroom(
                 requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
             )
-            try await compileKit.prewarmModels()
+            try await OffMain.run { try await compileKit.prewarmModels() }
             compileProgressTask.cancel()
             await compileKit.unloadModels()
 
@@ -941,7 +941,7 @@ final class ModelDownloadManager {
                 computeOptions: TranscriptionService.whisperComputeOptions(),
                 load: false
             )
-            let kit = try await WhisperKit(config)
+            let kit = try await OffMain.run { try await WhisperKit(config) }
             guard downloadRunID == runID, !Task.isCancelled else {
                 await kit.unloadModels()
                 return false
@@ -949,7 +949,7 @@ final class ModelDownloadManager {
             try await ensureLoadHeadroom(
                 requiredMB: ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
             )
-            try await kit.prewarmModels()
+            try await OffMain.run { try await kit.prewarmModels() }
             await kit.unloadModels()
             guard downloadRunID == runID,
                   !Task.isCancelled,
@@ -1192,7 +1192,7 @@ final class ModelDownloadManager {
             requiredMB: ModelMemoryBudget.llmLoadMegabytes(for: ModelQualityLevel.current)
         )
 
-        let task = Task { [isLLMReady] in
+        let task = Task.detached { [isLLMReady] in
             // When the model is already on disk, load from the local cache directory
             // without any network calls. HubDownloader.download always hits the HF API
             // to resolve "main" → commit hash (a network request), which blocks for up
