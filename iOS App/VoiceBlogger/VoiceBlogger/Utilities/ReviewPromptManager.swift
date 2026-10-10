@@ -1,7 +1,11 @@
-import StoreKit
 import UIKit
 
 enum ReviewPromptManager {
+    static let appStoreID = "6777303710"
+    /// Opens the App Store write-review page. `AppStore.requestReview` is rate-limited
+    /// and often shows nothing, so the explicit Rate button uses this link instead.
+    static let writeReviewURL = URL(string: "https://apps.apple.com/app/id\(appStoreID)?action=write-review")!
+
     private static let launchCountKey = "appLaunchCount"
     private static let permanentlyDismissedKey = "reviewPromptPermanentlyDismissed"
     private static let deferredAtLaunchCountKey = "reviewPromptDeferredAtLaunchCount"
@@ -22,11 +26,9 @@ enum ReviewPromptManager {
         UserDefaults.standard.set(count, forKey: launchCountKey)
     }
 
+    @MainActor
     static func requestReview() {
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) else { return }
-        AppStore.requestReview(in: scene)
+        UIApplication.shared.open(writeReviewURL)
     }
 
     static func deferPrompt() {

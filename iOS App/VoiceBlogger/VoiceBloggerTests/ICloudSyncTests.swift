@@ -125,4 +125,22 @@ struct ICloudSyncTests {
 
         try FileManager.default.removeItem(at: folder)
     }
+
+    @Test func recordingsStayLocalWhenTheUbiquityContainerIsUnavailable() {
+        let fileManager = UbiquityDeniedFileManager()
+        RecordingLocations.resetUbiquityCache()
+        defer { RecordingLocations.resetUbiquityCache() }
+
+        #expect(RecordingLocations.ubiquityDirectory(fileManager: fileManager) == nil)
+        #expect(
+            RecordingLocations.recordingsDirectory(syncEnabled: true, fileManager: fileManager)
+                == RecordingLocations.localDirectory(fileManager: fileManager)
+        )
+    }
+}
+
+private final class UbiquityDeniedFileManager: FileManager, @unchecked Sendable {
+    override func url(forUbiquityContainerIdentifier identifier: String?) -> URL? {
+        nil
+    }
 }

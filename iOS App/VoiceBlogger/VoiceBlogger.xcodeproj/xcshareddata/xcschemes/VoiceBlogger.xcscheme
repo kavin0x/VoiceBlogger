@@ -33,6 +33,19 @@
                ReferencedContainer = "container:VoiceBlogger.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "8AD556612FCBAA03001151C1"
+               BuildableName = "VoiceBloggerUITests.xctest"
+               ReferencedContainer = "container:VoiceBlogger.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -49,6 +62,16 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "8AD556572FCBAA03001151C1"
                BuildableName = "VoiceBloggerTests.xctest"
+               ReferencedContainer = "container:VoiceBlogger.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "8AD556612FCBAA03001151C1"
+               BuildableName = "VoiceBloggerUITests.xctest"
                ReferencedContainer = "container:VoiceBlogger.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -80,6 +80,7 @@ nonisolated final class LLMService: Sendable {
     nonisolated static func make(progressHandler: (@Sendable (Progress) -> Void)? = nil) async throws -> LLMService {
         try await OffMain.run {
             try await ModelLoadDiagnostics.timed("LLM load") {
+                MLX.Memory.cacheLimit = ModelQualityLevel.current.mlxCacheLimitBytes(on: DeviceRAMTier.current)
                 let c = try await LLMModelFactory.shared.loadContainer(
                     from: HubDownloader(),
                     using: HuggingFaceTokenizerLoader(),
@@ -99,6 +100,8 @@ nonisolated final class LLMService: Sendable {
     // Returns nil until the weight file is complete. A snapshot that only has config.json,
     // or a model.safetensors cut off mid-download, must fall through to a resumable fetch.
     static func localModelDirectory() -> URL? {
+        let fast = ModelSnapshotStore.llmSnapshotDirectory(repoID: ModelIDs.llm)
+        if SafetensorsSnapshot.isLoadable(fast) { return fast }
         guard let repoID = HuggingFace.Repo.ID(rawValue: ModelIDs.llm) else { return nil }
         let cache = HubCache.default
 
@@ -150,6 +153,7 @@ nonisolated final class LLMService: Sendable {
         }
         return try await OffMain.run {
             try await ModelLoadDiagnostics.timed("LLM load (local cache)") {
+                MLX.Memory.cacheLimit = ModelQualityLevel.current.mlxCacheLimitBytes(on: DeviceRAMTier.current)
                 let c = try await LLMModelFactory.shared.loadContainer(
                     from: directory,
                     using: HuggingFaceTokenizerLoader()

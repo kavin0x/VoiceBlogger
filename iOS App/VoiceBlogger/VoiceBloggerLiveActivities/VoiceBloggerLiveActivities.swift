@@ -47,14 +47,18 @@ struct VoiceBloggerLiveActivityWidget: Widget {
     @ViewBuilder
     private func expandedLeading(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
         HStack(spacing: 8) {
-            RecordingPulse(color: tint(for: context.attributes.kind), isRecording: context.attributes.kind == .recording)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(context.state.title)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Text("Voice Blogger")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            statusMark(context: context)
+            if LiveActivityPresentation.showsTitleInExpandedLeading(kind: context.attributes.kind) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(context.state.title)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text("Voice Blogger")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
     }
@@ -102,9 +106,15 @@ struct VoiceBloggerLiveActivityWidget: Widget {
             .padding(.top, 4)
         case .downloading:
             VStack(alignment: .leading, spacing: 6) {
+                Text(context.state.title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(context.state.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 if let progress = context.state.progress {
                     ProgressView(value: progress)
                         .tint(tint(for: context.attributes.kind))
@@ -175,6 +185,17 @@ struct VoiceBloggerLiveActivityWidget: Widget {
         case .downloading: return .blue
         }
     }
+
+    private func statusMark(context: ActivityViewContext<VoiceBloggerActivityAttributes>) -> some View {
+        RecordingPulse(
+            color: tint(for: context.attributes.kind),
+            symbolName: LiveActivityPresentation.statusGlyph(
+                kind: context.attributes.kind,
+                symbolName: context.state.symbolName
+            ),
+            isRecording: context.attributes.kind == .recording
+        )
+    }
 }
 
 // MARK: - Lock screen / notification banner view
@@ -184,21 +205,32 @@ private struct VoiceBloggerLiveActivityContent: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            RecordingPulse(color: tint, isRecording: context.attributes.kind == .recording)
+            RecordingPulse(
+                color: tint,
+                symbolName: LiveActivityPresentation.statusGlyph(
+                    kind: context.attributes.kind,
+                    symbolName: context.state.symbolName
+                ),
+                isRecording: context.attributes.kind == .recording
+            )
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(context.state.title)
                         .font(.headline)
-                    Spacer()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 8)
                     statusText
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .layoutPriority(1)
                 }
 
                 Text(context.state.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                 if context.attributes.kind == .downloading, let progress = context.state.progress {
                     ProgressView(value: progress)
@@ -236,6 +268,7 @@ private struct VoiceBloggerLiveActivityContent: View {
 
 private struct RecordingPulse: View {
     let color: Color
+    let symbolName: String
     let isRecording: Bool
 
     @State private var pulsing = false
@@ -256,7 +289,7 @@ private struct RecordingPulse: View {
             Circle()
                 .fill(color)
                 .frame(width: 18, height: 18)
-            Image(systemName: isRecording ? "mic.fill" : "checkmark")
+            Image(systemName: symbolName)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.white)
         }

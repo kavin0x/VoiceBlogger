@@ -7,6 +7,9 @@ enum HubDownloadPolicy {
     // More parallel requests than this causes connection churn and disk contention on
     // iOS while providing no benefit for the small number of large model shards.
     nonisolated static let maximumConcurrentTransfers = 8
+    /// Pieces of one large weight file downloaded at once. One TCP stream
+    /// leaves most of a fast link idle.
+    nonisolated static let rangedTransferParts = 6
     nonisolated static let wifiOnlyDefaultsKey = DownloadNetworkPolicy.wifiOnlyDefaultsKey
 
     nonisolated static func applyNetworkAccess(to config: URLSessionConfiguration, wifiOnly: Bool) {
@@ -37,8 +40,9 @@ struct HubDownloader: MLXLMCommon.Downloader {
         config.urlCache = nil
         config.requestCachePolicy = .useProtocolCachePolicy
         config.waitsForConnectivity = true
-        config.networkServiceType = .default
-        config.httpAdditionalHeaders = ["Accept-Encoding": "br, gzip, deflate"]
+        config.networkServiceType = .responsiveData
+        // Weight files are already compressed. Asking for brotli just burns CPU.
+        config.httpAdditionalHeaders = ["Accept-Encoding": "identity"]
         HubDownloadPolicy.applyNetworkAccess(
             to: config,
             wifiOnly: UserDefaults.standard.bool(forKey: HubDownloadPolicy.wifiOnlyDefaultsKey)
@@ -56,13 +60,38 @@ struct HubDownloader: MLXLMCommon.Downloader {
         guard let repoID = HuggingFace.Repo.ID(rawValue: id) else {
             throw HubDownloaderError.invalidRepositoryID(id)
         }
-        return try await upstream.downloadSnapshot(
-            of: repoID,
-            revision: revision ?? "main",
-            matching: patterns,
-            maxConcurrentDownloads: HubDownloadPolicy.maximumConcurrentTransfers,
-            progressHandler: { @MainActor progress in progressHandler(progress) }
-        )
+        if let local = LLMService.localModelDirectory() {
+            let done = Progress(totalUnitCount: 1)
+            done.completedUnitCount = 1
+            progressHandler(done)
+            return local
+        }
+        let destination = ModelSnapshotStore.llmSnapshotDirectory(repoID: id)
+        do {
+            try await ParallelSnapshotFetcher.download(
+                repoID: id,
+                revision: revision ?? "main",
+                into: destination,
+                pathPrefix: nil,
+                globs: patterns,
+                progress: { fraction in
+                    let progress = Progress(totalUnitCount: 10_000)
+                    progress.completedUnitCount = Int64((fraction * 10_000).rounded())
+                    progressHandler(progress)
+                }
+            )
+            return destination
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return try await upstream.downloadSnapshot(
+                of: repoID,
+                revision: revision ?? "main",
+                matching: patterns,
+                maxConcurrentDownloads: HubDownloadPolicy.maximumConcurrentTransfers,
+                progressHandler: { @MainActor progress in progressHandler(progress) }
+            )
+        }
     }
 }
 

@@ -324,7 +324,7 @@ final class ModelDownloadManager {
         beginBackgroundContinuation()
         liveActivityCoordinator.startDownload(
             progress: overallDownloadProgress,
-            detail: currentDownloadDetail,
+            detail: liveActivityDetail,
             title: downloadLiveActivityTitle
         )
         await task.value
@@ -615,7 +615,7 @@ final class ModelDownloadManager {
         beginBackgroundContinuation()
         liveActivityCoordinator.startDownload(
             progress: overallDownloadProgress,
-            detail: currentDownloadDetail,
+            detail: liveActivityDetail,
             title: downloadLiveActivityTitle
         )
         return task
@@ -741,6 +741,21 @@ final class ModelDownloadManager {
         return "Finalizing setup"
     }
 
+    /// Names the model in progress. The island already shows one percentage,
+    /// so this line must not carry a second one.
+    private var liveActivityDetail: String {
+        if let domain = activeUpdateDomain {
+            return domain.displayName
+        }
+        if !isWhisperReady {
+            return String(localized: "Speech Recognition")
+        }
+        if !isLLMReady {
+            return String(localized: "Writing Assistant")
+        }
+        return String(localized: "Finalizing setup")
+    }
+
     private var downloadLiveActivityTitle: String {
         if let domain = activeUpdateDomain {
             return "Updating \(domain.displayName)"
@@ -752,7 +767,7 @@ final class ModelDownloadManager {
         guard isDownloading else { return }
         liveActivityCoordinator.updateDownload(
             progress: overallDownloadProgress,
-            detail: currentDownloadDetail,
+            detail: liveActivityDetail,
             title: downloadLiveActivityTitle
         )
     }
@@ -856,10 +871,12 @@ final class ModelDownloadManager {
                     downloadError = DownloadNetworkPolicy.blockedMessage
                     return
                 }
-                whisperProgress = 0.05
-                // Download model files with load: false — files land on disk without
-                // pulling CoreML weights into RAM. No progress callback is available here,
-                // so animate smoothly to 0.45 while the ~800 MB transfer runs.
+                whisperProgress = 0.02
+                let fastDownloadFinished = await downloadWhisperFilesInParallel(runID: runID)
+                guard downloadRunID == runID, !Task.isCancelled else { return }
+                if !fastDownloadFinished {
+                // WhisperKit's own downloader fetches files one at a time and reports
+                // no byte progress. Used only when the parallel fetch fails.
                 let config = WhisperKitConfig(
                     model: ModelIDs.whisper,
                     computeOptions: TranscriptionService.whisperComputeOptions(),
@@ -880,6 +897,7 @@ final class ModelDownloadManager {
                     return
                 }
                 progressTask.cancel()
+                }
             }
 
             // Compile CoreML models now while the user is still on the download screen.
@@ -932,6 +950,64 @@ final class ModelDownloadManager {
             guard downloadRunID == runID else { return }
             downloadError = downloadErrorMessage(error, for: "Speech Recognition")
         }
+    }
+
+    /// Downloads speech-model files with parallel ranges, and specializes each
+    /// CoreML bundle as soon as its files land so that work overlaps the next file.
+    private func downloadWhisperFilesInParallel(runID: UUID) async -> Bool {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
+        let root = docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+        let compileQueue = SerialAsyncQueue()
+        let options = TranscriptionService.whisperComputeOptions()
+        do {
+            try await ParallelSnapshotFetcher.download(
+                repoID: "argmaxinc/whisperkit-coreml",
+                revision: "main",
+                into: root,
+                pathPrefix: ModelIDs.whisper,
+                globs: [],
+                progress: { [weak self] fraction in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.downloadRunID == runID, !self.isWhisperReady else { return }
+                        let mapped = 0.02 + (0.70 * fraction)
+                        if mapped > self.whisperProgress { self.whisperProgress = mapped }
+                    }
+                },
+                onBundleReady: { bundleURL in
+                    compileQueue.enqueue {
+                        await Self.specializeWhisperBundle(bundleURL, options: options)
+                    }
+                }
+            )
+            await compileQueue.drain()
+            return downloadRunID == runID && !Task.isCancelled
+        } catch {
+            return false
+        }
+    }
+
+    private static func specializeWhisperBundle(_ bundleURL: URL, options: ModelComputeOptions) async {
+        let required = ModelMemoryBudget.whisperCompileMegabytes(for: ModelQualityLevel.current)
+        guard ModelMemoryBudget.allowsLoad(availableBytes: availableMemoryBytes(), requiredMB: required) else { return }
+        let name = bundleURL.lastPathComponent
+        let units: MLComputeUnits
+        if name.hasPrefix("Mel") {
+            units = options.melCompute
+        } else if name.hasPrefix("Audio") {
+            units = options.audioEncoderCompute
+        } else if name.hasPrefix("Text") {
+            units = options.textDecoderCompute
+        } else {
+            return
+        }
+        #if targetEnvironment(simulator)
+        _ = units
+        #else
+        let config = MLModelConfiguration()
+        config.computeUnits = units
+        _ = try? await MLModel.load(contentsOf: bundleURL, configuration: config)
+        #endif
     }
 
     private func validateLocalWhisperDirectory(_ directory: URL, runID: UUID) async -> Bool {

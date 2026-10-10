@@ -513,6 +513,8 @@ struct VoiceBloggerTests {
     @Test func hubDownloadPolicyUsesBoundedParallelism() {
         #expect(HubDownloadPolicy.maximumConcurrentTransfers >= 4)
         #expect(HubDownloadPolicy.maximumConcurrentTransfers <= 8)
+        #expect(HubDownloadPolicy.rangedTransferParts >= 4)
+        #expect(HubDownloadPolicy.rangedTransferParts <= HubDownloadPolicy.maximumConcurrentTransfers)
     }
 
     @Test func cancellationDoesNotInvalidateDownloadedModels() {
@@ -1240,6 +1242,27 @@ struct VoiceBloggerTests {
         #expect(LiveActivityCoordinator.recordingEndContent(saved: true).detail == "Ready to transcribe")
     }
 
+    @Test func downloadLiveActivityUsesADownloadGlyphAndOneProgressNumber() {
+        let glyph = LiveActivityPresentation.statusGlyph(
+            kind: .downloading,
+            symbolName: "arrow.down.circle.fill"
+        )
+        #expect(glyph == "arrow.down")
+        #expect(glyph != "checkmark")
+
+        #expect(
+            LiveActivityPresentation.statusGlyph(kind: .recording, symbolName: "mic.fill") == "mic.fill"
+        )
+        #expect(
+            LiveActivityPresentation.statusGlyph(kind: .downloading, symbolName: "checkmark.circle.fill") == "checkmark"
+        )
+        #expect(
+            LiveActivityPresentation.statusGlyph(kind: .downloading, symbolName: "pause.circle") == "pause.fill"
+        )
+        #expect(LiveActivityPresentation.showsTitleInExpandedLeading(kind: .downloading) == false)
+        #expect(LiveActivityPresentation.showsTitleInExpandedLeading(kind: .recording) == true)
+    }
+
     @Test func backgroundTranscriptionRetriesAMissingDownloadAndStopsOnEmptyAudio() {
         #expect(BackgroundTranscriptionRetryPolicy.attemptResult(fileReady: false, error: nil) == .retry)
         #expect(BackgroundTranscriptionRetryPolicy.attemptResult(fileReady: true, error: nil) == .succeeded)
@@ -1262,6 +1285,16 @@ struct VoiceBloggerTests {
             ) == .retry
         )
         #expect(BackgroundTranscriptionRetryPolicy.retryDelay >= 30)
+    }
+
+    @Test func rateOnAppStoreOpensWriteReviewPage() {
+        let url = ReviewPromptManager.writeReviewURL
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
+        #expect(url.scheme == "https")
+        #expect(url.host == "apps.apple.com")
+        #expect(url.path == "/app/id\(ReviewPromptManager.appStoreID)")
+        #expect(components?.queryItems?.contains(URLQueryItem(name: "action", value: "write-review")) == true)
     }
 
     private static func safetensorsFile(header: String, payloadBytes: Int) -> Data {
