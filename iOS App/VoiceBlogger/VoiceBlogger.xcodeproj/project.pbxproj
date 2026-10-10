@@ -475,6 +475,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = VoiceBloggerLiveActivities/VoiceBloggerLiveActivities.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 8D9T44T824;
 				GENERATE_INFOPLIST_FILE = YES;
