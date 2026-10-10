@@ -1218,6 +1218,21 @@ struct VoiceBloggerTests {
         #expect(!stayedOnMain)
     }
 
+    @Test func playbackToggleAbandonsAPlayerReleasedDuringSessionActivation() {
+        let original = NSObject()
+        let replacement = NSObject()
+        #expect(PlaybackContinuity.playerToToggle(captured: original, current: original) === original)
+        #expect(PlaybackContinuity.playerToToggle(captured: original, current: nil) == nil)
+        #expect(PlaybackContinuity.playerToToggle(captured: original, current: replacement) == nil)
+    }
+
+    @Test func playbackSessionActivationLeavesTheMainThread() async throws {
+        try await AudioSessionManager.activatePlayback()
+        #expect(AudioSessionManager.lastWorkRanOnMainThread == false)
+        #expect(AVAudioSession.sharedInstance().category == .playback)
+        await AudioSessionManager.deactivate()
+    }
+
     @Test func unsavedRecordingActivityDoesNotPromiseATranscript() {
         let copy = LiveActivityCoordinator.recordingEndContent(saved: false)
         #expect(copy.title == "Recording Interrupted")

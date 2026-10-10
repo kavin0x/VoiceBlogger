@@ -11,6 +11,8 @@ struct AudioPlayerView: View {
     @State private var statusMessage: String?
     @State private var timeTimer: Timer?
     @State private var downloadTask: Task<Void, Never>?
+    @State private var loadTask: Task<Void, Never>?
+    @State private var playbackTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 8) {
@@ -73,15 +75,20 @@ struct AudioPlayerView: View {
             statusMessage = nil
         }
 
+        loadTask?.cancel()
+        loadTask = Task { await loadReadyPlayer() }
+    }
+
+    private func loadReadyPlayer() async {
         do {
-            try AudioSessionManager.activatePlayback()
-            let player = try AVAudioPlayer(contentsOf: audioURL)
-            player.prepareToPlay()
+            let player = try await AudioSessionManager.makePreparedPlayer(for: audioURL)
+            guard !Task.isCancelled else { return }
             audioPlayer = player
             duration = player.duration
             playbackError = nil
             startTimeUpdates()
         } catch {
+            guard !Task.isCancelled else { return }
             audioPlayer = nil
             playbackError = "Could not load audio for playback."
         }
@@ -108,6 +115,10 @@ struct AudioPlayerView: View {
     private func teardownPlayer() {
         downloadTask?.cancel()
         downloadTask = nil
+        loadTask?.cancel()
+        loadTask = nil
+        playbackTask?.cancel()
+        playbackTask = nil
         timeTimer?.invalidate()
         timeTimer = nil
         audioPlayer?.stop()
@@ -129,24 +140,36 @@ struct AudioPlayerView: View {
     }
 
     private func togglePlayback() {
-        guard let audioPlayer else { return }
-        do {
-            try AudioSessionManager.activatePlayback()
-            if audioPlayer.isPlaying {
-                audioPlayer.pause()
-            } else {
-                if audioPlayer.currentTime >= audioPlayer.duration - 0.05 {
-                    audioPlayer.currentTime = 0
-                }
-                guard audioPlayer.play() else {
-                    playbackError = "Playback could not start."
+        guard let captured = audioPlayer else { return }
+        playbackTask?.cancel()
+        playbackTask = Task {
+            do {
+                try await AudioSessionManager.activatePlayback()
+                guard !Task.isCancelled else { return }
+                // Activation suspends this task. Disappear can stop and drop the player first.
+                guard let player = PlaybackContinuity.playerToToggle(captured: captured, current: audioPlayer) else {
                     return
                 }
+                if player.isPlaying {
+                    player.pause()
+                } else {
+                    if player.currentTime >= player.duration - 0.05 {
+                        player.currentTime = 0
+                    }
+                    guard player.play() else {
+                        playbackError = "Playback could not start."
+                        return
+                    }
+                }
+                isPlaying = player.isPlaying
+                playbackError = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                guard PlaybackContinuity.playerToToggle(captured: captured, current: audioPlayer) != nil else {
+                    return
+                }
+                playbackError = "Audio output is unavailable."
             }
-            isPlaying = audioPlayer.isPlaying
-            playbackError = nil
-        } catch {
-            playbackError = "Audio output is unavailable."
         }
     }
 
@@ -154,5 +177,13 @@ struct AudioPlayerView: View {
         let mins = Int(time) / 60
         let secs = Int(time) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+enum PlaybackContinuity {
+    /// The player to pause or play after an async gap, or nil when the view no longer owns it.
+    static func playerToToggle<Player: AnyObject>(captured: Player, current: Player?) -> Player? {
+        guard let current, current === captured else { return nil }
+        return current
     }
 }

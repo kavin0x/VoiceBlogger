@@ -123,7 +123,7 @@ final class AudioRecorder: NSObject {
         }
         let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
 
@@ -137,7 +137,7 @@ final class AudioRecorder: NSObject {
             )
             RecordingStorage.protect(outputURL)
         } catch {
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw error
         }
 
@@ -145,7 +145,7 @@ final class AudioRecorder: NSObject {
         if createdArchiveConverter == nil,
            !RecordingAudioSettings.formatsMatch(inputFormat, outputFile.processingFormat) {
             try? FileManager.default.removeItem(at: outputURL)
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
 
@@ -156,13 +156,13 @@ final class AudioRecorder: NSObject {
             interleaved: false
         ) else {
             try? FileManager.default.removeItem(at: outputURL)
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
         let createdWhisperConverter = Self.makeConverter(from: inputFormat, to: whisperFormat)
         if createdWhisperConverter == nil, !RecordingAudioSettings.formatsMatch(inputFormat, whisperFormat) {
             try? FileManager.default.removeItem(at: outputURL)
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw AudioRecorderError.recordingCouldNotStart
         }
 
@@ -193,7 +193,7 @@ final class AudioRecorder: NSObject {
                 activeWhisperKit = nil
             }
             try? FileManager.default.removeItem(at: outputURL)
-            Task.detached { AudioSessionManager.deactivate() }
+            Task.detached { await AudioSessionManager.deactivate() }
             throw error
         }
 
@@ -233,7 +233,7 @@ final class AudioRecorder: NSObject {
         latestAudioLevel = -60
         IntentStorage.clearRecordingActive()
         liveActivity.endRecording(saved: true)
-        Task.detached { AudioSessionManager.deactivate() }
+        Task.detached { await AudioSessionManager.deactivate() }
 
         let url = currentAudioURL
         currentAudioURL = nil
@@ -300,7 +300,7 @@ final class AudioRecorder: NSObject {
         isLivePreview = false
         IntentStorage.clearRecordingActive()
         liveActivity.endRecording(saved: false)
-        Task.detached { AudioSessionManager.deactivate() }
+        Task.detached { await AudioSessionManager.deactivate() }
 
         if let url = urlToDelete {
             try? FileManager.default.removeItem(at: url)
@@ -455,7 +455,7 @@ final class AudioRecorder: NSObject {
         latestAudioLevel = -60
         isFinalizingTranscript = false
         IntentStorage.clearRecordingActive()
-        Task.detached { AudioSessionManager.deactivate() }
+        Task.detached { await AudioSessionManager.deactivate() }
 
         sampleQueue.async { [weak self] in
             guard let self else { return }
@@ -547,16 +547,7 @@ final class AudioRecorder: NSObject {
     // MARK: - Audio Session
 
     private func activateRecordingSession() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try AudioSessionManager.activateRecording()
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        try await AudioSessionManager.activateRecording()
     }
 
     // MARK: - Notifications

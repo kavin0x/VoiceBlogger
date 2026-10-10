@@ -1,6 +1,6 @@
 # Privacy Policy for VoiceBlogger
 
-**Last updated: October 3, 2026**
+**Last updated: October 9th, 2026**
 
 ## Overview
 
@@ -29,17 +29,14 @@ Turning sync off on a device keeps a local copy there and stops new uploads from
 
 ## AI Models
 
-On first launch, VoiceBlogger downloads two AI model files from [Hugging Face](https://huggingface.co):
-
-- **openai/whisper-medium** — for speech-to-text transcription
-- **mlx-community/gemma-4-e2b-it-4bit** — for blog and caption generation
+On first launch, VoiceBlogger downloads two AI model files from [Hugging Face](https://huggingface.co)
 
 Once downloaded, the models are stored on your device and all inference runs locally. Hugging Face's own [privacy policy](https://huggingface.co/privacy) governs those download requests. If you turn on iCloud sync, the app also talks to iCloud to sync your library.
 
 ## Permissions
 
-| Permission | Why It's Needed |
-|---|---|
+| Permission     | Why It's Needed                        |
+| -------------- | -------------------------------------- |
 | **Microphone** | To record your voice for transcription |
 
 No other device permissions are requested or used.
@@ -62,4 +59,4 @@ If we update this policy, we will revise the "Last updated" date above and note 
 
 ## Contact
 
-If you have questions about this policy, please open an issue on GitHub or contact us at kavinshah2013@gmail.com.
+If you have questions about this policy, please open an issue on GitHub or contact us at <kavinshah2013@gmail.com>.
