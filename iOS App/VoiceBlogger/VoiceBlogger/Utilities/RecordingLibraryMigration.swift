@@ -43,6 +43,39 @@ enum RecordingLocations: Sendable {
         return localDirectory(fileManager: fileManager)
     }
 
+    /// The folder in use can change during a session: a take is written locally while the
+    /// iCloud container is still unavailable, then later lookups use the container. Export
+    /// must open the file that was actually written.
+    nonisolated static func resolveRecordingURL(
+        named filename: String,
+        syncEnabled: Bool = ICloudSyncSettings.isEnabled(),
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let primary = RecordingLibraryMigration.fileURL(
+            named: filename,
+            in: recordingsDirectory(syncEnabled: syncEnabled, fileManager: fileManager)
+        ) else { return nil }
+        if RecordingFileAccess.isPresent(at: primary, fileManager: fileManager) { return primary }
+
+        let local = localDirectory(fileManager: fileManager)
+        if let localURL = RecordingLibraryMigration.fileURL(named: filename, in: local),
+           localURL.path != primary.path,
+           RecordingFileAccess.isPresent(at: localURL, fileManager: fileManager) {
+            return localURL
+        }
+        if let cloud = ubiquityDirectory(fileManager: fileManager),
+           let cloudURL = RecordingLibraryMigration.fileURL(named: filename, in: cloud),
+           cloudURL.path != primary.path,
+           RecordingFileAccess.isPresent(at: cloudURL, fileManager: fileManager) {
+            return cloudURL
+        }
+        return RecordingLibraryMigration.conflictRecordingURL(
+            named: filename,
+            syncEnabled: syncEnabled,
+            fileManager: fileManager
+        ) ?? primary
+    }
+
     /// Test hook so a cached container URL from another process state does not leak into unit tests.
     nonisolated static func resetUbiquityCache() {
         cacheLock.lock()
@@ -83,6 +116,88 @@ enum RecordingLibraryMigration: Sendable {
         fileManager: FileManager = .default
     ) -> RecordingMoveResult {
         transfer(from: source, to: destination, fileManager: fileManager, copy: true)
+    }
+
+    /// iCloud keeps a losing copy beside the real folder (`recordings 2`) or renames a
+    /// file `name 2.ext`. History still stores the original filename, so those copies
+    /// are folded back before the app looks them up.
+    nonisolated static func absorbConflictCopies(fileManager: FileManager = .default) {
+        absorbConflicts(into: RecordingLocations.localDirectory(fileManager: fileManager), fileManager: fileManager)
+        if let cloud = RecordingLocations.ubiquityDirectory(fileManager: fileManager) {
+            absorbConflicts(into: cloud, fileManager: fileManager)
+        }
+    }
+
+    nonisolated static func absorbConflicts(into canonical: URL, fileManager: FileManager = .default) {
+        let parent = canonical.deletingLastPathComponent()
+        let names = (try? fileManager.contentsOfDirectory(atPath: parent.path)) ?? []
+        for name in names.sorted() where isNumberedConflictName(name, of: "recordings") {
+            guard isSafeFilename(name) else { continue }
+            let source = parent.appendingPathComponent(name, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                continue
+            }
+            _ = moveRecordings(from: source, to: canonical, fileManager: fileManager)
+            let leftover = (try? fileManager.contentsOfDirectory(atPath: source.path)) ?? ["kept"]
+            if leftover.isEmpty {
+                try? fileManager.removeItem(at: source)
+            }
+        }
+        renameNumberedFiles(in: canonical, fileManager: fileManager)
+    }
+
+    nonisolated static func conflictRecordingURL(
+        named filename: String,
+        syncEnabled: Bool,
+        fileManager: FileManager
+    ) -> URL? {
+        let directories = searchDirectories(syncEnabled: syncEnabled, fileManager: fileManager)
+        for directory in directories {
+            guard let url = fileURL(named: filename, in: directory),
+                  RecordingFileAccess.isPresent(at: url, fileManager: fileManager) else { continue }
+            return url
+        }
+        for directory in directories {
+            let names = ((try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []).sorted()
+            for name in names where isConflictFile(named: name, of: filename) {
+                guard let url = fileURL(named: name, in: directory),
+                      RecordingFileAccess.isPresent(at: url, fileManager: fileManager) else { continue }
+                return url
+            }
+        }
+        return nil
+    }
+
+    /// `recordings 2` and `take 2.m4a` are the names iCloud uses for a conflict.
+    /// `recordings 2 3` is a conflict of a conflict. `recordings backup` is not.
+    nonisolated static func isNumberedConflictName(_ candidate: String, of original: String) -> Bool {
+        guard candidate.count > original.count else { return false }
+        let suffix = candidate.dropFirst(original.count)
+        var index = suffix.startIndex
+        var groups = 0
+        while index < suffix.endIndex {
+            guard suffix[index] == " " else { return false }
+            let digits = suffix.index(after: index)
+            var cursor = digits
+            while cursor < suffix.endIndex, suffix[cursor].isNumber {
+                cursor = suffix.index(after: cursor)
+            }
+            if cursor == digits { return false }
+            groups += 1
+            index = cursor
+        }
+        return groups > 0
+    }
+
+    nonisolated static func isConflictFile(named candidate: String, of filename: String) -> Bool {
+        let originalExtension = (filename as NSString).pathExtension
+        let candidateExtension = (candidate as NSString).pathExtension
+        guard originalExtension == candidateExtension else { return false }
+        return isNumberedConflictName(
+            (candidate as NSString).deletingPathExtension,
+            of: (filename as NSString).deletingPathExtension
+        )
     }
 
     nonisolated static func moveLocalRecordingsIntoUbiquity(fileManager: FileManager = .default) {
@@ -155,6 +270,62 @@ enum RecordingLibraryMigration: Sendable {
         }
         return result
     }
+
+    nonisolated private static func searchDirectories(
+        syncEnabled: Bool,
+        fileManager: FileManager
+    ) -> [URL] {
+        var ordered: [URL] = []
+        func add(_ url: URL?) {
+            guard let url else { return }
+            let path = url.standardizedFileURL.path
+            guard !ordered.contains(where: { $0.standardizedFileURL.path == path }) else { return }
+            ordered.append(url)
+        }
+        add(RecordingLocations.recordingsDirectory(syncEnabled: syncEnabled, fileManager: fileManager))
+        add(RecordingLocations.localDirectory(fileManager: fileManager))
+        add(RecordingLocations.ubiquityDirectory(fileManager: fileManager))
+        let seeds = ordered
+        for directory in seeds {
+            let parent = directory.deletingLastPathComponent()
+            let names = (try? fileManager.contentsOfDirectory(atPath: parent.path)) ?? []
+            for name in names.sorted() where isNumberedConflictName(name, of: "recordings") && isSafeFilename(name) {
+                add(parent.appendingPathComponent(name, isDirectory: true))
+            }
+        }
+        return ordered
+    }
+
+    nonisolated private static func renameNumberedFiles(in directory: URL, fileManager: FileManager) {
+        let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names.sorted() {
+            guard let canonical = unnumberedFilename(name), isSafeFilename(canonical), isSafeFilename(name),
+                  let from = fileURL(named: name, in: directory),
+                  let to = fileURL(named: canonical, in: directory),
+                  !fileManager.fileExists(atPath: to.path) else { continue }
+            do {
+                try fileManager.moveItem(at: from, to: to)
+                RecordingStorage.protect(to)
+            } catch {
+                continue
+            }
+        }
+    }
+
+    /// `take 2.m4a` and `take 2 3.m4a` both belong to `take.m4a`.
+    nonisolated private static func unnumberedFilename(_ name: String) -> String? {
+        let ext = (name as NSString).pathExtension
+        var base = (name as NSString).deletingPathExtension
+        var changed = false
+        while let space = base.lastIndex(of: " ") {
+            let suffix = base[base.index(after: space)...]
+            guard !suffix.isEmpty, suffix.allSatisfy(\.isNumber) else { break }
+            base = String(base[..<space])
+            changed = true
+        }
+        guard changed, !base.isEmpty else { return nil }
+        return ext.isEmpty ? base : base + "." + ext
+    }
 }
 
 enum RecordingReadiness: Equatable, Sendable {
@@ -187,11 +358,30 @@ enum RecordingFileAccess: Sendable {
             try? fileManager.startDownloadingUbiquitousItem(at: url)
             return .downloading
         }
-        guard fileManager.fileExists(atPath: url.path) else { return .missing }
+        guard isPresent(at: url, fileManager: fileManager) else { return .missing }
         if isUbiquitous, (values?.fileSize ?? 0) == 0 {
             try? fileManager.startDownloadingUbiquitousItem(at: url)
             return .downloading
         }
         return .ready
+    }
+
+    /// `fileExists` reports false for a take that was just written into iCloud until the
+    /// next launch. A reachable URL, or a downloaded ubiquitous item, is the file on disk.
+    nonisolated static func isPresent(at url: URL, fileManager: FileManager = .default) -> Bool {
+        if fileManager.fileExists(atPath: url.path) { return true }
+        if (try? url.checkResourceIsReachable()) == true { return true }
+        let values = try? url.resourceValues(forKeys: [
+            .isUbiquitousItemKey,
+            .ubiquitousItemDownloadingStatusKey,
+            .fileSizeKey,
+        ])
+        guard values?.isUbiquitousItem == true else { return false }
+        switch values?.ubiquitousItemDownloadingStatus {
+        case .current, .downloaded:
+            return true
+        default:
+            return (values?.fileSize ?? 0) > 0
+        }
     }
 }

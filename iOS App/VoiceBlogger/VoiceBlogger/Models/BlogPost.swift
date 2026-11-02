@@ -72,7 +72,7 @@ final class BlogPost {
 
     var audioFileURL: URL? {
         guard let name = audioFilename else { return nil }
-        return RecordingLibraryMigration.fileURL(named: name, in: URL.recordingsDirectory)
+        return RecordingLocations.resolveRecordingURL(named: name)
     }
 }
 

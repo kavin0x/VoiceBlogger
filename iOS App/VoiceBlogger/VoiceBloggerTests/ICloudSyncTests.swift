@@ -126,6 +126,116 @@ struct ICloudSyncTests {
         try FileManager.default.removeItem(at: folder)
     }
 
+    @Test func resolveRecordingURLFindsATakeWrittenBeforeTheContainerWasReady() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("resolve-\(UUID().uuidString)", isDirectory: true)
+        let documents = root.appendingPathComponent("Documents", isDirectory: true)
+        let container = root.appendingPathComponent("iCloud", isDirectory: true)
+        let fileManager = FixedUbiquityFileManager(documents: documents, container: container)
+        let filename = "take.m4a"
+        let local = documents
+            .appendingPathComponent("recordings", isDirectory: true)
+            .appendingPathComponent(filename)
+        try fileManager.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("audio".utf8).write(to: local)
+        RecordingLocations.resetUbiquityCache()
+        defer {
+            RecordingLocations.resetUbiquityCache()
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let resolved = RecordingLocations.resolveRecordingURL(
+            named: filename,
+            syncEnabled: true,
+            fileManager: fileManager
+        )
+
+        #expect(resolved?.path == local.path)
+        #expect(RecordingFileAccess.isPresent(at: local, fileManager: fileManager))
+    }
+
+    @Test func conflictNamesMatchOnlyNumberedCopies() {
+        #expect(RecordingLibraryMigration.isNumberedConflictName("recordings 2", of: "recordings"))
+        #expect(RecordingLibraryMigration.isNumberedConflictName("recordings 2 3", of: "recordings"))
+        #expect(!RecordingLibraryMigration.isNumberedConflictName("recordings", of: "recordings"))
+        #expect(!RecordingLibraryMigration.isNumberedConflictName("recordings backup", of: "recordings"))
+        #expect(RecordingLibraryMigration.isConflictFile(named: "take 2.m4a", of: "take.m4a"))
+        #expect(RecordingLibraryMigration.isConflictFile(named: "take 2 3.m4a", of: "take.m4a"))
+        #expect(!RecordingLibraryMigration.isConflictFile(named: "take 2.caf", of: "take.m4a"))
+        #expect(!RecordingLibraryMigration.isConflictFile(named: "take-notes.m4a", of: "take.m4a"))
+    }
+
+    @Test func conflictFolderAndNumberedFileAreFoldedBackIntoRecordings() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("conflicts-\(UUID().uuidString)", isDirectory: true)
+        let recordings = root.appendingPathComponent("recordings", isDirectory: true)
+        let conflict = root.appendingPathComponent("recordings 2", isDirectory: true)
+        let nested = root.appendingPathComponent("recordings 2 3", isDirectory: true)
+        let backup = root.appendingPathComponent("recordings backup", isDirectory: true)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: recordings, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: conflict, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: nested, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: backup, withIntermediateDirectories: true)
+        try Data("from-conflict".utf8).write(to: conflict.appendingPathComponent("take.m4a"))
+        try Data("from-nested".utf8).write(to: nested.appendingPathComponent("nested.m4a"))
+        try Data("numbered".utf8).write(to: recordings.appendingPathComponent("other 2.m4a"))
+        try Data("double".utf8).write(to: recordings.appendingPathComponent("double 2 3.caf"))
+        try Data("canonical".utf8).write(to: recordings.appendingPathComponent("both.m4a"))
+        try Data("duplicate".utf8).write(to: recordings.appendingPathComponent("both 2.m4a"))
+        try Data("leave".utf8).write(to: backup.appendingPathComponent("model.bin"))
+        defer { try? fileManager.removeItem(at: root) }
+
+        RecordingLibraryMigration.absorbConflicts(into: recordings, fileManager: fileManager)
+
+        #expect(try Data(contentsOf: recordings.appendingPathComponent("take.m4a")) == Data("from-conflict".utf8))
+        #expect(try Data(contentsOf: recordings.appendingPathComponent("nested.m4a")) == Data("from-nested".utf8))
+        #expect(try Data(contentsOf: recordings.appendingPathComponent("other.m4a")) == Data("numbered".utf8))
+        #expect(try Data(contentsOf: recordings.appendingPathComponent("double.caf")) == Data("double".utf8))
+        #expect(try Data(contentsOf: recordings.appendingPathComponent("both.m4a")) == Data("canonical".utf8))
+        #expect(fileManager.fileExists(atPath: recordings.appendingPathComponent("both 2.m4a").path))
+        #expect(!fileManager.fileExists(atPath: recordings.appendingPathComponent("other 2.m4a").path))
+        #expect(!fileManager.fileExists(atPath: conflict.path))
+        #expect(!fileManager.fileExists(atPath: nested.path))
+        #expect(fileManager.fileExists(atPath: backup.appendingPathComponent("model.bin").path))
+    }
+
+    @Test func resolveRecordingURLFindsConflictFolderAndNumberedFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("resolve-conflict-\(UUID().uuidString)", isDirectory: true)
+        let documents = root.appendingPathComponent("Documents", isDirectory: true)
+        let container = root.appendingPathComponent("iCloud", isDirectory: true)
+        let fileManager = FixedUbiquityFileManager(documents: documents, container: container)
+        let cloudDocuments = container.appendingPathComponent("Documents", isDirectory: true)
+        let conflict = cloudDocuments.appendingPathComponent("recordings 2", isDirectory: true)
+        let recordings = cloudDocuments.appendingPathComponent("recordings", isDirectory: true)
+        try fileManager.createDirectory(at: conflict, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: recordings, withIntermediateDirectories: true)
+        let folded = conflict.appendingPathComponent("folded.m4a")
+        let numbered = recordings.appendingPathComponent("numbered 2.m4a")
+        try Data("folded".utf8).write(to: folded)
+        try Data("numbered".utf8).write(to: numbered)
+        RecordingLocations.resetUbiquityCache()
+        defer {
+            RecordingLocations.resetUbiquityCache()
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let foldedURL = RecordingLocations.resolveRecordingURL(
+            named: "folded.m4a",
+            syncEnabled: true,
+            fileManager: fileManager
+        )
+        let numberedURL = RecordingLocations.resolveRecordingURL(
+            named: "numbered.m4a",
+            syncEnabled: true,
+            fileManager: fileManager
+        )
+
+        #expect(foldedURL?.path == folded.path)
+        #expect(numberedURL?.path == numbered.path)
+    }
+
     @Test func recordingsStayLocalWhenTheUbiquityContainerIsUnavailable() {
         let fileManager = UbiquityDeniedFileManager()
         RecordingLocations.resetUbiquityCache()
@@ -142,5 +252,28 @@ struct ICloudSyncTests {
 private final class UbiquityDeniedFileManager: FileManager, @unchecked Sendable {
     override func url(forUbiquityContainerIdentifier identifier: String?) -> URL? {
         nil
+    }
+}
+
+private final class FixedUbiquityFileManager: FileManager, @unchecked Sendable {
+    let documents: URL
+    let container: URL
+
+    init(documents: URL, container: URL) {
+        self.documents = documents
+        self.container = container
+        super.init()
+    }
+
+    override func urls(
+        for directory: FileManager.SearchPathDirectory,
+        in domainMask: FileManager.SearchPathDomainMask
+    ) -> [URL] {
+        if directory == .documentDirectory { return [documents] }
+        return super.urls(for: directory, in: domainMask)
+    }
+
+    override func url(forUbiquityContainerIdentifier identifier: String?) -> URL? {
+        container
     }
 }

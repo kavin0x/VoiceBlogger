@@ -100,6 +100,7 @@ final class LibraryStore {
     var syncError: String?
 
     init() {
+        RecordingLibraryMigration.absorbConflictCopies()
         if ICloudSyncSettings.isEnabled() {
             RecordingLibraryMigration.moveLocalRecordingsIntoUbiquity()
         }
@@ -118,6 +119,7 @@ final class LibraryStore {
         if let message = decision.message {
             return message
         }
+        RecordingLibraryMigration.absorbConflictCopies()
         if decision.enabled {
             RecordingLibraryMigration.moveLocalRecordingsIntoUbiquity()
         } else {
